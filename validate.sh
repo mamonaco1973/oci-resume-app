@@ -85,28 +85,67 @@ fi
 # POST /jobs still returns 200 and the job row still appears; it just stays at
 # "submitted" forever because nothing drains the queue.
 # ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------
+# Function: oci_state
+#
+# Purpose
+# Run an OCI CLI query and return its value, or "UNAVAILABLE" if the command
+# does not exist in this CLI version.
+#
+# Both stdout and stderr are discarded on failure. The CLI prints its usage
+# banner to STDOUT for an unknown subcommand, so redirecting only stderr
+# captures that banner as the "result" and prints a wall of usage text where a
+# lifecycle state should be.
+#
+# Arguments
+# - "$@" : full OCI CLI invocation
+#
+# Returns
+# - The queried value, or UNAVAILABLE
+# --------------------------------------------------------------------------------
+oci_state() {
+  local out
+  out=$("$@" 2>/dev/null) || return 1
+  # A usage banner or empty result is not a lifecycle state.
+  if [[ -z "${out}" || "${out}" == Usage:* || "${out}" == *"No such command"* ]]; then
+    return 1
+  fi
+  printf '%s' "${out}"
+}
+
 if [[ -n "${QUEUE_ID}" ]]; then
   echo "NOTE: Verifying the scoring queue is ACTIVE..."
-  QSTATE=$(oci queue queue get --queue-id "${QUEUE_ID}" \
-    --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
-  echo "NOTE: Queue state - ${QSTATE}"
+  # `oci queue` splits into channels / messages / queue-admin. The control
+  # plane (lifecycle state) lives under queue-admin; `messages` is the data
+  # plane and knows nothing about whether the queue is ACTIVE.
+  QSTATE=$(oci_state oci queue queue-admin get --queue-id "${QUEUE_ID}" \
+    --query 'data."lifecycle-state"' --raw-output) || QSTATE="UNAVAILABLE"
 
-  if [[ "${QSTATE}" != "ACTIVE" ]]; then
-    echo "WARN: Queue is not ACTIVE — submitted jobs will not be scored."
+  if [[ "${QSTATE}" == "UNAVAILABLE" ]]; then
+    echo "NOTE: Queue state not checked (CLI lacks the queue command) — skipping."
+  else
+    echo "NOTE: Queue state - ${QSTATE}"
+    if [[ "${QSTATE}" != "ACTIVE" ]]; then
+      echo "WARN: Queue is not ACTIVE — submitted jobs will not be scored."
+    fi
   fi
 fi
 
 echo "NOTE: Verifying the Connector Hub service connector is ACTIVE..."
 COMPARTMENT_ID=$(cd 03-functions && terraform output -raw compartment_id 2>/dev/null || echo "")
 if [[ -n "${COMPARTMENT_ID}" ]]; then
-  SCSTATE=$(oci sch service-connector list \
+  SCSTATE=$(oci_state oci sch service-connector list \
     --compartment-id "${COMPARTMENT_ID}" \
     --display-name "resume-queue-to-worker" \
-    --query 'data.items[0]."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
-  echo "NOTE: Connector state - ${SCSTATE}"
+    --query 'data.items[0]."lifecycle-state"' --raw-output) || SCSTATE="UNAVAILABLE"
 
-  if [[ "${SCSTATE}" != "ACTIVE" ]]; then
-    echo "WARN: Connector is not ACTIVE — jobs will sit at 'submitted' forever."
+  if [[ "${SCSTATE}" == "UNAVAILABLE" ]]; then
+    echo "NOTE: Connector state not checked (CLI lacks the sch command) — skipping."
+  else
+    echo "NOTE: Connector state - ${SCSTATE}"
+    if [[ "${SCSTATE}" != "ACTIVE" ]]; then
+      echo "WARN: Connector is not ACTIVE — jobs will sit at 'submitted' forever."
+    fi
   fi
 fi
 

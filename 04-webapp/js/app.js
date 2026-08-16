@@ -301,16 +301,39 @@ document
 
   // Awaited because building the authorize URL now derives a PKCE S256
   // challenge, which is an async crypto.subtle call.
-  document.getElementById("btn-cognito-sign-in")?.addEventListener("click", async () => {
+  document.getElementById("btn-sign-in")?.addEventListener("click", async () => {
     window.location.href = await getLoginUrl();
   });
 
-  // Self-registration lives on its own Identity Domains page; the stock
-  // sign-in page does not surface a link to it.
-  document.getElementById("btn-create-account")?.addEventListener("click", () => {
-    const url = getSignupUrl();
-    if (url) window.location.href = url;
-  });
+  // -------------------------------------------------------------------------
+  // Sign Up
+  // -------------------------------------------------------------------------
+  // Identity Domains will not render a self-registration link on its own
+  // sign-in page even with the profile marked visible, so the app links to the
+  // hosted signup form directly.
+  //
+  // Opened in a NEW tab, not this one. Navigating away would discard the PKCE
+  // verifier this tab has already stashed in sessionStorage, so a user who
+  // registered and pressed Back would land on a sign-in that fails with an
+  // opaque invalid_grant. Registering beside the app and returning to it keeps
+  // that state intact.
+  //
+  // The button is revealed only when apply.sh actually resolved a
+  // self-registration profile; otherwise SIGNUP_URL is empty and it stays
+  // hidden rather than leading to a broken page.
+  const btnSignUp  = document.getElementById("btn-sign-up");
+  const signUpHint = document.getElementById("sign-up-hint");
+  const signupUrl  = getSignupUrl();
+
+  if (signupUrl) {
+    btnSignUp?.classList.remove("hidden");
+    signUpHint?.classList.remove("hidden");
+
+    btnSignUp?.addEventListener("click", () => {
+      // noopener so the new tab cannot reach back through window.opener.
+      window.open(signupUrl, "_blank", "noopener");
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Sign out

@@ -1143,6 +1143,15 @@ tr:hover .btn-ext-link {
   font-size: 15px;
 }
 
+/* Sets expectations before the click rather than after — registration opens
+   in a new tab, and an unexplained tab switch reads as a bug. */
+.auth-form-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
 /* ================================================================ */
 /* Mobile responsive                                                 */
 /* ================================================================ */

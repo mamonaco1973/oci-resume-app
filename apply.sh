@@ -185,7 +185,7 @@ cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
 echo "NOTE: Writing js/config.js..."
 # Self-registration profile — looked up by NAME (created once in the console),
 # so no profile ID has to be hard-coded or exported. apply.sh resolves its ID
-# from the domain. When found, the SPA sign-in chooser shows a "Create Account"
+# from the domain. When found, the SPA sign-in modal shows a "Sign Up"
 # option linking to the hosted signup form; if not found, the chooser goes
 # straight to sign-in. Override the name with OCI_SIGNUP_PROFILE_NAME.
 SIGNUP_PROFILE_NAME="${OCI_SIGNUP_PROFILE_NAME:-spa-signup}"
@@ -201,14 +201,14 @@ SIGNUP_PROFILE_ID=$(oci identity-domains self-registration-profiles list \
   --query 'data.resources[0].id' --raw-output 2>/dev/null || echo "")
 
 if [ -z "${SIGNUP_PROFILE_ID}" ] || [ "${SIGNUP_PROFILE_ID}" = "null" ]; then
-  echo "NOTE: Profile '${SIGNUP_PROFILE_NAME}' not found — 'Create Account' hidden."
+  echo "NOTE: Profile '${SIGNUP_PROFILE_NAME}' not found — 'Sign Up' hidden."
   SIGNUP_PROFILE_ID=""
 else
   echo "NOTE: Self-registration profile id - ${SIGNUP_PROFILE_ID}"
 fi
 
 # Self-registration lands on the domain's hosted signup form. Empty when the
-# profile was not found, which makes the SPA hide the Create Account button
+# profile was not found, which makes the SPA hide the Sign Up button
 # rather than link somewhere broken.
 SIGNUP_URL=""
 if [ -n "${SIGNUP_PROFILE_ID}" ]; then
@@ -239,12 +239,14 @@ cd ..
 # ------------------------------------------------------------------------------
 # Post-deployment validation
 # ------------------------------------------------------------------------------
-# OCI Functions pull the container image from OCIR on first invocation.
-# Wait briefly to allow the cold start to complete before hitting the API.
+# No cold-start wait here. It was inherited from the notes app, where it was
+# already doing nothing useful: validate.sh only proves the gateway REJECTS
+# unauthenticated calls, and those are answered by API Gateway itself — no
+# function is ever invoked, so there is no container to warm.
+#
+# The first real invocation happens when someone signs in and loads the app,
+# which is well after this script exits.
 # ------------------------------------------------------------------------------
-
-echo "NOTE: Waiting 60s for function cold start readiness..."
-sleep 60
 
 echo "NOTE: Running post-deployment validation..."
 ./validate.sh

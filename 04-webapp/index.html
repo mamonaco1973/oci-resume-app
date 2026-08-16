@@ -258,8 +258,17 @@
         <h2>Welcome to My Jobs</h2>
         <p class="auth-form-desc">Sign in to access your personal job scoring dashboard.</p>
         <div class="auth-form-actions">
-          <button type="button" id="btn-cognito-sign-in">Sign In</button>
+          <button type="button" id="btn-sign-in">Sign In</button>
+          <!-- Hidden until config.js proves self-registration is configured;
+               a Sign Up button that leads nowhere is worse than no button. -->
+          <button type="button" id="btn-sign-up" class="btn-secondary hidden">
+            Sign Up
+          </button>
         </div>
+        <p class="auth-form-hint hidden" id="sign-up-hint">
+          Sign up opens in a new tab. Come back here to sign in once you are
+          done.
+        </p>
       </div><!-- /auth-form-panel -->
 
       <!-- Right: decorative preview panel -->
