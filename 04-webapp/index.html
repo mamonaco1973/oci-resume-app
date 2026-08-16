@@ -258,7 +258,11 @@
         <h2>Welcome to My Jobs</h2>
         <p class="auth-form-desc">Sign in to access your personal job scoring dashboard.</p>
         <div class="auth-form-actions">
-          <button type="button" id="btn-sign-in">Sign In</button>
+          <!-- Distinct from the header sign-in icon button, which opens this
+               modal. If both carried the same id, getElementById would return
+               only the header one, so it would collect this button's handler
+               and fire both actions while this button did nothing. -->
+          <button type="button" id="btn-modal-sign-in">Sign In</button>
           <!-- Hidden until config.js proves self-registration is configured;
                a Sign Up button that leads nowhere is worse than no button. -->
           <button type="button" id="btn-sign-up" class="btn-secondary hidden">

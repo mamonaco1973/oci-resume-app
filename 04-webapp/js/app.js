@@ -301,7 +301,7 @@ document
 
   // Awaited because building the authorize URL now derives a PKCE S256
   // challenge, which is an async crypto.subtle call.
-  document.getElementById("btn-sign-in")?.addEventListener("click", async () => {
+  document.getElementById("btn-modal-sign-in")?.addEventListener("click", async () => {
     window.location.href = await getLoginUrl();
   });
 

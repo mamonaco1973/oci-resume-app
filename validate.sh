@@ -162,15 +162,10 @@ cat <<EOF
   Model : ${GENAI_MODEL}
 
   Manual end-to-end test:
-    1. Open the Web URL above and sign in (or create an account).
+    1. Open the Web URL above and sign in (or sign up).
     2. Add a resume under "Manage Resumes".
     3. Submit a job by URL or by pasting a description.
     4. The row appears as "submitted", moves to "Scoring", then shows a score.
        If it never leaves "submitted", the connector is not draining the queue.
-
-  Manual API test with a token (copy id_token from browser localStorage):
-    JWT="<paste localStorage.id_token>"
-    curl -H "Authorization: Bearer \$JWT" ${API_BASE}/jobs
-    curl -H "Authorization: Bearer \$JWT" ${API_BASE}/usage
 =================================================================================
 EOF
