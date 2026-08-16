@@ -47,10 +47,20 @@
     <pre id="log"></pre>
   </div>
 
-<script>
-/* =============================================================================
-   Helpers
-============================================================================= */
+<!-- ============================================================================
+     PKCE redirect handler.
+
+     Uses the same auth.js the rest of the app does rather than re-implementing
+     the token exchange inline, so the redirect URI, endpoint paths and storage
+     keys can only ever be defined once. A second copy here is exactly how the
+     redirect_uri drifts out of sync with the one registered on the app and
+     every sign-in starts failing with an opaque invalid_grant.
+============================================================================= -->
+<script type="module">
+import { CONFIG } from "./js/config.js";
+import { exchangeCodeForTokens, storeTokens,
+         getPostLoginRedirectUrl } from "./js/auth.js";
+
 const elMsg = document.getElementById("msg");
 const elLog = document.getElementById("log");
 
@@ -62,86 +72,44 @@ function fail(msg) {
   throw new Error(msg);
 }
 
-/* =============================================================================
-   Main — exchange the authorization code for tokens (PKCE, no client secret)
-============================================================================= */
 (async function main() {
   try {
-    // Runtime config written by apply.sh (Identity Domains client + endpoints).
-    // Relative path — the page is served under a long /o/ prefix, not the root.
-    const cfgRes = await fetch("config.json", { cache: "no-store" });
-    if (!cfgRes.ok) fail("Unable to load /config.json (" + cfgRes.status + ")");
-    const cfg = await cfgRes.json();
+    log("domainUrl = " + CONFIG.DOMAIN_URL);
+    log("clientId  = " + CONFIG.CLIENT_ID);
+    log("webBase   = " + CONFIG.WEB_BASE_URL);
 
-    const { domainUrl, clientId, redirectUri } = cfg;
-    if (!domainUrl || !clientId || !redirectUri) {
-      fail("config.json missing domainUrl/clientId/redirectUri");
-    }
-
-    log("domainUrl   = " + domainUrl);
-    log("clientId    = " + clientId);
-    log("redirectUri = " + redirectUri);
-
-    // Parse callback params.
     const url   = new URL(window.location.href);
     const code  = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const err   = url.searchParams.get("error");
     const errD  = url.searchParams.get("error_description");
 
-    if (err)  fail(err + (errD ? " - " + errD : ""));
+    if (err)   fail(err + (errD ? " - " + errD : ""));
     if (!code) fail("Missing authorization code");
 
-    // Validate state (CSRF protection).
+    // CSRF protection — the state we generated before redirecting must come
+    // back untouched.
     const expectedState = sessionStorage.getItem("oauth_state");
     if (expectedState && state !== expectedState) fail("State mismatch");
 
-    // PKCE verifier stashed by the SPA before redirecting to authorize.
-    const codeVerifier = sessionStorage.getItem("pkce_code_verifier");
-    if (!codeVerifier) {
-      fail("Missing PKCE code verifier. Login must be initiated by the SPA.");
-    }
-
     elMsg.textContent = "Exchanging authorization code for tokens…";
 
-    // Identity Domains token endpoint (note the /oauth2/v1/ path).
-    const tokenUrl = domainUrl.replace(/\/$/, "") + "/oauth2/v1/token";
+    const tokens = await exchangeCodeForTokens(code);
 
-    const body = new URLSearchParams();
-    body.set("grant_type", "authorization_code");
-    body.set("client_id", clientId);
-    body.set("code", code);
-    body.set("redirect_uri", redirectUri);
-    body.set("code_verifier", codeVerifier);
+    // The SPA sends the ID token to API Gateway (aud = client_id), so its
+    // absence is fatal even when the exchange itself reported success.
+    if (!tokens.id_token) {
+      fail("No id_token returned (request the 'openid' scope)");
+    }
 
-    const res  = await fetch(tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body
-    });
-    const text = await res.text();
-    if (!res.ok) fail("Token endpoint error " + res.status + ": " + text);
+    storeTokens(tokens);
 
-    const tok = JSON.parse(text);
-    // The SPA sends the ID token to the API Gateway (aud = client_id), so it is
-    // the required token here; access_token is stored for completeness.
-    if (!tok.id_token) fail("No id_token returned (request the 'openid' scope)");
-
-    sessionStorage.setItem("id_token", tok.id_token);
-    if (tok.access_token)  sessionStorage.setItem("access_token", tok.access_token);
-    if (tok.refresh_token) sessionStorage.setItem("refresh_token", tok.refresh_token);
-    if (tok.expires_in)    sessionStorage.setItem("expires_in", String(tok.expires_in));
-    sessionStorage.setItem("token_received_at", String(Date.now()));
-
-    // One-time values are no longer needed.
-    sessionStorage.removeItem("pkce_code_verifier");
-    sessionStorage.removeItem("oauth_state");
-
-    // Strip the code/state from the address bar, then return to the SPA.
+    // Strip code/state from the address bar so a refresh cannot replay them.
     window.history.replaceState({}, document.title, url.origin + url.pathname);
+
     elMsg.textContent = "Signed in. Redirecting…";
     log("Token exchange successful");
-    window.location.href = url.origin + url.pathname.replace(/callback\.html$/, "index.html");
+    window.location.href = getPostLoginRedirectUrl();
   } catch (e) {
     console.error(e);
   }

@@ -7,8 +7,8 @@
 # ================================================================================
 
 output "api_gateway_endpoint" {
-  description = "HTTPS base URL for the Notes API (no trailing slash)"
-  value       = "https://${oci_apigateway_gateway.notes.hostname}"
+  description = "HTTPS base URL for the resume API (no trailing slash)"
+  value       = "https://${oci_apigateway_gateway.resume.hostname}"
 }
 
 output "ocir_image_path" {
@@ -18,7 +18,39 @@ output "ocir_image_path" {
 
 output "nosql_table_name" {
   description = "OCI NoSQL table name"
-  value       = oci_nosql_table.notes.name
+  value       = oci_nosql_table.resume_app.name
+}
+
+output "genai_model_id" {
+  description = "Generative AI model the worker scores with"
+  value       = var.genai_model_id
+}
+
+# --- Async tier ----------------------------------------------------------------
+
+output "queue_id" {
+  description = "OCID of the scoring request queue"
+  value       = oci_queue_queue.jobs.id
+}
+
+# destroy.sh empties this bucket before Terraform runs — Object Storage refuses
+# to delete a bucket that still contains objects, and the functions will have
+# written resume text and attachments into it.
+output "backend_bucket_name" {
+  description = "Private bucket holding resume text, snapshots, analyses, attachments"
+  value       = oci_objectstorage_bucket.backend.name
+}
+
+output "os_namespace" {
+  description = "Object Storage namespace (needed by the teardown script)"
+  value       = data.oci_objectstorage_namespace.ns.namespace
+}
+
+# Echoed back so validate.sh can look up the service connector without
+# re-deriving the compartment from ~/.oci/config and risking a mismatch.
+output "compartment_id" {
+  description = "Compartment the stack was deployed into"
+  value       = var.compartment_id
 }
 
 # --- Web hosting (bucket created in storage.tf) --------------------------------

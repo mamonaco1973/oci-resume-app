@@ -43,3 +43,45 @@ if ! oci os ns get > /dev/null 2>&1; then
 fi
 
 echo "NOTE: OCI CLI authentication successful."
+
+# ------------------------------------------------------------------------------
+# Generative AI availability check
+# ------------------------------------------------------------------------------
+# The model the worker scores with must actually be served on demand in this
+# region. OCI retires on-demand models aggressively — an entire vendor's line
+# went retired on a single day in August 2026 — so a build that worked last
+# month can fail on a model that is merely listed but no longer invokable.
+#
+# Catching it here turns a confusing runtime failure (every job silently ends
+# up in Error with a model message) into a clear pre-flight stop.
+# ------------------------------------------------------------------------------
+
+source ./genai-config.sh
+
+echo "NOTE: Checking Generative AI model availability - ${GENAI_MODEL_ID}"
+
+TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
+
+GENAI_MATCH=$(oci generative-ai model-collection list-models \
+  --compartment-id "${TENANCY_OCID}" \
+  --output json 2>/dev/null \
+  | jq -r --arg m "${GENAI_MODEL_ID}" '
+      [ .data.items[]?
+        | select(."display-name" == $m)
+        | select(.capabilities[]? == "CHAT")
+        | select(."time-on-demand-retired" == null)
+      ] | length' 2>/dev/null || echo "0")
+
+if [[ "${GENAI_MATCH}" == "0" ]]; then
+  echo "ERROR: Model '${GENAI_MODEL_ID}' is not available for on-demand CHAT"
+  echo "ERROR: in this region, or has been retired. List what is live with:"
+  echo "ERROR:   oci generative-ai model-collection list-models \\"
+  echo "ERROR:     --compartment-id ${TENANCY_OCID} --output json | jq -r '"
+  echo "ERROR:     .data.items[] | select(.capabilities[]? == \"CHAT\")"
+  echo "ERROR:     | select(.\"time-on-demand-retired\" == null)"
+  echo "ERROR:     | .\"display-name\"'"
+  echo "ERROR: Then update GENAI_MODEL_ID in genai-config.sh."
+  exit 1
+fi
+
+echo "NOTE: Generative AI model is available on demand."

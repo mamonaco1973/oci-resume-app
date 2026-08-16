@@ -27,7 +27,7 @@ set -euo pipefail
 # Reuse the same names setup_domain.sh persisted (gitignored).
 if [ -f env.sh ]; then source env.sh; fi
 
-DOMAIN_NAME="${OCI_DOMAIN_NAME:-notes-app}"
+DOMAIN_NAME="${OCI_DOMAIN_NAME:-resume-app}"
 
 # ------------------------------------------------------------------------------
 # Derive OCI identifiers from ~/.oci/config (mirrors setup_domain.sh)

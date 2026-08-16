@@ -3,7 +3,7 @@
 # File: 02-docker/build.sh
 #
 # Purpose:
-#   Builds the notes-functions Docker image and pushes it to OCIR.
+#   Builds the resume-functions Docker image and pushes it to OCIR.
 #   The image tag is a content hash of the source files — any code change
 #   produces a new tag, which causes Phase 3 (Terraform) to update the
 #   function image attribute.
@@ -24,14 +24,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_DIR="${SCRIPT_DIR}/code"
 OUTPUT_FILE="${SCRIPT_DIR}/.build_output"
 
-# Content hash of source files — tag changes only when code changes.
-IMAGE_TAG=$(cat \
-  "${CODE_DIR}/func.py" \
-  "${CODE_DIR}/requirements.txt" \
-  "${CODE_DIR}/Dockerfile" \
+# Content hash of every source file — the tag changes when any code changes.
+#
+# This deliberately globs the whole directory rather than listing files. The
+# handler is split across ten modules; naming them individually means a new
+# module, or an edit to an unlisted one, produces an unchanged tag, Terraform
+# sees no diff, and the code silently never deploys. Sorted so the hash does
+# not depend on filesystem ordering.
+IMAGE_TAG=$(find "${CODE_DIR}" -type f \( -name '*.py' -o -name 'requirements.txt' -o -name 'Dockerfile' \) \
+  | LC_ALL=C sort \
+  | xargs cat \
   | sha256sum | cut -d' ' -f1 | cut -c1-8)
 
-IMAGE_PATH="${OCIR_HOST}/${NAMESPACE}/notes-functions:${IMAGE_TAG}"
+IMAGE_PATH="${OCIR_HOST}/${NAMESPACE}/resume-functions:${IMAGE_TAG}"
 
 echo "NOTE: Building Docker image (tag=${IMAGE_TAG})..."
 docker build -t "${IMAGE_PATH}" "${CODE_DIR}"

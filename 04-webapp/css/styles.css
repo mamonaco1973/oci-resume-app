@@ -1,0 +1,1248 @@
+/* ================================================================ */
+/* Base */
+/* ================================================================ */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
+    sans-serif;
+  margin: 0;
+  background: #f6f8fa;
+  color: #222;
+}
+
+/* !important so utility class wins over display set by other classes */
+.hidden {
+  display: none !important;
+}
+
+/* ================================================================ */
+/* Header */
+/* ================================================================ */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(160deg, #1e3a5f 0%, #2d6cdf 60%, #4f9cf9 100%);
+  border-bottom: none;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: #f1f5f9;
+}
+
+/* Icon buttons in the gradient header need light strokes */
+.app-header .icon-btn {
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.app-header .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+.actions button {
+  margin-left: 10px;
+}
+
+/* ================================================================ */
+/* Buttons */
+/* ================================================================ */
+
+button {
+  background: #2d6cdf;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #1f4fb2;
+}
+
+button:disabled {
+  background: #bbb;
+  cursor: not-allowed;
+}
+
+/* ================================================================ */
+/* Layout */
+/* ================================================================ */
+
+main {
+  padding: 24px;
+}
+
+/* ================================================================ */
+/* Table */
+/* ================================================================ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+thead {
+  background: #f1f3f5;
+}
+
+th,
+td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e6e6e6;
+}
+
+th {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+
+tr:hover {
+  background: #f9fbfd;
+}
+
+/* Inline links in the jobs table body */
+#jobs-body a {
+  color: #2d6cdf;
+  text-decoration: none;
+}
+
+#jobs-body a:hover {
+  text-decoration: underline;
+}
+
+/* ================================================================ */
+/* Filter Bar */
+/* ================================================================ */
+
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  padding: 12px 24px;
+  background: white;
+  border-bottom: 1px solid #ddd;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+/* Controls within a group sit in a row (select + action buttons) */
+.filter-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-group select,
+.filter-group input[type="text"] {
+  padding: 6px 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  color: #222;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.filter-group--search input[type="text"] {
+  width: 220px;
+}
+
+/* ================================================================ */
+/* Checkbox column */
+/* ================================================================ */
+
+.checkbox-cell {
+  width: 36px;
+  text-align: center;
+  padding: 10px 8px;
+}
+
+.job-checkbox,
+#select-all-jobs {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+}
+
+/* ================================================================ */
+/* Bulk action bar */
+/* ================================================================ */
+
+/* display:flex only when .hidden is absent — avoids overriding .hidden */
+.bulk-action-bar:not(.hidden) {
+  display: flex;
+}
+
+.bulk-action-bar {
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: #eef4ff;
+  border-bottom: 1px solid #c5d8ff;
+  flex-wrap: wrap;
+}
+
+#bulk-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f4fb2;
+  min-width: 100px;
+}
+
+.bulk-move-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.bulk-move-group span {
+  font-size: 14px;
+  color: #555;
+}
+
+.bulk-move-group select {
+  padding: 6px 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  height: 34px;
+}
+
+/* ================================================================ */
+/* Icon-only buttons                                                 */
+/* ================================================================ */
+
+/* Square button sized to match header control height (34 px).    */
+/* The button base styles (bg, hover, disabled) still apply.      */
+.icon-btn {
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ================================================================ */
+/* Status badges */
+/* ================================================================ */
+
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.status-submitted {
+  background: #e7f0ff;
+  color: #1f4fb2;
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.status-Scoring {
+  background: #fff4d6;
+  color: #a66b00;
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.status-processing {
+  background: #fff4d6;
+  color: #a66b00;
+}
+
+.status-scored {
+  background: #e6f6ec;
+  color: #1b7a3c;
+}
+
+.status-Scored {
+  background: #e6f6ec;
+  color: #1b7a3c;
+}
+
+.status-error,
+.status-Error {
+  background: #fdeaea;
+  color: #b33434;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+/* ================================================================ */
+/* Score badges                                                      */
+/* ================================================================ */
+
+.score-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.score-high {
+  background: #e6f6ec;
+  color: #1b7a3c;
+}
+
+.score-mid {
+  background: #fff4d6;
+  color: #a66b00;
+}
+
+.score-low {
+  background: #fdeaea;
+  color: #b33434;
+}
+
+/* ================================================================ */
+/* Table loading state — dims rows while a fetch is in-flight      */
+/* ================================================================ */
+
+#jobs-table.loading tbody {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* ================================================================ */
+/* Auto-refresh indicator                                           */
+/* ================================================================ */
+
+/* display:inline-flex is only applied when .hidden is absent — avoids
+   the ID selector overriding .hidden { display:none } on this element */
+#auto-refresh-indicator:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+
+#auto-refresh-indicator .spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ccc;
+  border-top-color: #1f4fb2;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================ */
+/* Empty state */
+/* ================================================================ */
+
+#empty-state {
+  text-align: center;
+  padding: 40px;
+  background: white;
+  border: 1px dashed #ccc;
+}
+
+/* ================================================================ */
+/* Modal */
+/* ================================================================ */
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal.modal-submitting .modal-content {
+  pointer-events: none;
+}
+
+/* Applied during bulk delete/move to block interaction and signal activity */
+main.table-busy,
+.filter-bar.table-busy {
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+
+.modal-content {
+  background: white;
+  padding: 24px;
+  width: 500px;
+  max-width: 90%;
+  border-radius: 6px;
+}
+
+.modal-content--sm {
+  width: 400px;
+}
+
+.modal-message {
+  margin: 0 0 20px;
+  color: #444;
+  line-height: 1.5;
+}
+
+.btn-secondary {
+  background: #f1f3f5;
+  color: #333;
+  border: 1px solid #d0d0d0;
+}
+
+.btn-secondary:hover {
+  background: #e2e6ea;
+}
+
+/* ================================================================ */
+/* Inline field messages */
+/* ================================================================ */
+
+.field-error {
+  color: #b33434;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.form-error {
+  background: #fdecea;
+  border: 1px solid #e57373;
+  border-radius: 4px;
+  color: #b33434;
+  font-size: 13px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+}
+
+.field-success {
+  color: #1b7a3c;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+}
+
+.modal-content label {
+  display: block;
+  margin-top: 12px;
+  font-weight: 600;
+}
+
+.modal-content input,
+.modal-content textarea,
+.modal-content select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.modal-content textarea {
+  height: 250px;
+  resize: vertical;
+}
+
+#linkedin-job-ids {
+  height: 120px;
+}
+
+.modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ================================================================ */
+/* Resume Manager */
+/* ================================================================ */
+
+.resume-modal-content {
+  width: 900px;
+  max-width: 95%;
+}
+
+.resume-manager {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  min-height: 420px;
+}
+
+.resume-sidebar {
+  border-right: 1px solid #e6e6e6;
+  padding-right: 16px;
+}
+
+.resume-sidebar-actions {
+  margin-bottom: 12px;
+}
+
+#resume-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resume-list-item {
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.resume-list-item:hover {
+  background: #f7faff;
+}
+
+.resume-list-item.active {
+  border-color: #2d6cdf;
+  background: #eef4ff;
+}
+
+.resume-list-name {
+  font-weight: 600;
+}
+
+.resume-list-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.resume-editor h3 {
+  margin-top: 0;
+}
+
+.danger {
+  background: #d64545;
+}
+
+.danger:hover {
+  background: #b33434;
+}
+
+.job-detail-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.button-link {
+  display: inline-block;
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+  background: #fff;
+}
+
+.accordion-section {
+  margin-bottom: 16px;
+  border: 1px solid #d9d9d9;
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.accordion-section[open] {
+  border-left-color: #2d6cdf;
+}
+
+.accordion-section summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 600;
+  font-size: 15px;
+  background: #fafafa;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accordion-section summary::-webkit-details-marker { display: none; }
+
+.accordion-section summary::before {
+  content: "▶";
+  font-size: 10px;
+  color: #aaa;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.accordion-section[open] summary::before {
+  transform: rotate(90deg);
+  color: #2d6cdf;
+}
+
+.accordion-section summary:hover {
+  background: #f0f4ff;
+}
+
+.accordion-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid #ececec;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.detail-label {
+  font-weight: 600;
+}
+
+.detail-value {
+  word-break: break-word;
+}
+
+.form-control {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.detail-text-block {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* ================================================================ */
+/* Inline clip button (sits beside job title in the table)          */
+/* ================================================================ */
+
+/* Ghost style so it doesn't fight the title link visually */
+.btn-clip {
+  background: none;
+  color: #888;
+  border: none;
+  padding: 0 2px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.btn-clip:hover {
+  background: #f0f4ff;
+  color: #2d6cdf;
+}
+
+/* ================================================================ */
+/* Attachment dropdown (dashboard paperclip popover)                */
+/* ================================================================ */
+
+.attachment-dropdown {
+  position: fixed;
+  z-index: 1000;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 320px;
+  overflow: hidden;
+}
+
+.attachment-dropdown-loading,
+.attachment-dropdown-empty {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #777;
+}
+
+.attachment-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #222;
+}
+
+.attachment-dropdown-item:hover {
+  background: #f0f4ff;
+}
+
+.attachment-dropdown-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* ================================================================ */
+/* Attachment list (job detail page)                                */
+/* ================================================================ */
+
+.attachment-upload-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.attachment-empty {
+  font-size: 14px;
+  color: #888;
+  margin: 0;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.attachment-item:last-child {
+  border-bottom: none;
+}
+
+.attachment-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* ================================================================ */
+/* Token usage indicator (filter bar)                               */
+/* ================================================================ */
+
+.token-usage-display {
+  height: 34px;
+  gap: 8px;
+  cursor: default;
+}
+
+.token-usage-label {
+  font-size: 13px;
+  color: #444;
+  white-space: nowrap;
+}
+
+/* Rotate so the arc starts from the top */
+.token-ring {
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+
+.token-ring-bg {
+  fill: none;
+  stroke: #e0e0e0;
+  stroke-width: 4;
+}
+
+.token-ring-arc {
+  fill: none;
+  stroke: #2d6cdf;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+
+/* Turns red when >= 80% of the token allowance is consumed */
+.token-ring-arc.token-near-limit {
+  stroke: #d64545;
+}
+
+/* ================================================================ */
+/* Job title button + hover-reveal ext link                          */
+/* ================================================================ */
+
+/* Styled as a link so it reads like the old anchor */
+.btn-job-open {
+  background: none;
+  border: none;
+  color: #2d6cdf;
+  padding: 0;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.btn-job-open:hover {
+  background: none;
+  color: #1f4fb2;
+  text-decoration: underline;
+}
+
+/* Small external-link icon next to job title — reveals on row hover */
+.btn-ext-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #bbb;
+  margin-left: 4px;
+  vertical-align: middle;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+tr:hover .btn-ext-link {
+  opacity: 1;
+}
+
+.btn-ext-link:hover {
+  color: #2d6cdf;
+}
+
+/* ================================================================ */
+/* Job detail modal                                                  */
+/* ================================================================ */
+
+.modal-content--job-detail {
+  width: 90vw;
+  max-width: 960px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.jd-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e6e6e6;
+  position: sticky;
+  top: -20px;
+  background: white;
+  z-index: 1;
+}
+
+.jd-modal-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.jd-modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ================================================================ */
+/* Job detail hero card                                              */
+/* ================================================================ */
+
+.jd-hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 20px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f0f4ff 0%, #f8faff 100%);
+  border: 1px solid #dbe4ff;
+  border-radius: 10px;
+}
+
+.jd-hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.jd-hero-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.jd-hero-company {
+  font-size: 16px;
+  color: #475569;
+  margin-bottom: 12px;
+}
+
+.jd-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.jd-hero-date {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.jd-score-ring-wrap {
+  flex-shrink: 0;
+}
+
+.jd-score-ring {
+  display: block;
+  transform: rotate(-90deg);
+}
+
+.jd-score-ring-bg {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-width: 8;
+}
+
+.jd-score-ring-arc {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease, stroke 0.3s ease;
+}
+
+.jd-score-label {
+  font-size: 20px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: #94a3b8;
+}
+
+/* ================================================================ */
+/* Help modal                                                        */
+/* ================================================================ */
+
+.modal-content--help {
+  width: 620px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.help-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e6e6e6;
+}
+
+.help-modal-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.help-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #444;
+}
+
+.help-body ol,
+.help-body ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-body li {
+  margin-bottom: 6px;
+}
+
+.help-body p {
+  margin: 0 0 10px;
+}
+
+.help-score-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.help-score-table td {
+  padding: 6px 10px;
+  border: none;
+  vertical-align: middle;
+}
+
+.help-score-table td:first-child {
+  width: 70px;
+  text-align: center;
+}
+
+/* Notes save button row */
+.form-actions {
+  margin-top: 12px;
+}
+
+/* ================================================================ */
+/* Auth modal — split preview / sign-in layout                       */
+/* ================================================================ */
+
+.modal-content--auth {
+  display: flex;
+  flex-direction: row-reverse;
+  width: 820px;
+  max-width: 95vw;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: white;
+}
+
+/* Right gradient panel */
+.auth-preview-panel {
+  flex: 1;
+  background: linear-gradient(160deg, #1e3a5f 0%, #2d6cdf 60%, #4f9cf9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  color: white;
+}
+
+.auth-preview-inner {
+  max-width: 280px;
+}
+
+.auth-preview-logo {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 10px;
+}
+
+.auth-preview-tagline {
+  font-size: 14px;
+  opacity: 0.85;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.auth-preview-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-preview-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  opacity: 0.9;
+  line-height: 1.4;
+}
+
+.auth-preview-features li svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.auth-preview-rings {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+/* Left sign-in panel */
+.auth-form-panel {
+  flex: 0 0 320px;
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-form-panel h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.auth-form-desc {
+  color: #555;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 28px;
+}
+
+.auth-form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-form-actions button {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 15px;
+}
+
+/* ================================================================ */
+/* Mobile responsive                                                 */
+/* ================================================================ */
+
+@media (max-width: 640px) {
+
+  /* Tighter header padding */
+  .app-header {
+    padding: 10px 14px;
+  }
+
+  .app-header h1 {
+    font-size: 16px;
+  }
+
+  /* Tighter main content padding */
+  main {
+    padding: 10px;
+  }
+
+  /* Filter bar wraps tightly */
+  .filter-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  /* Search input full width on mobile */
+  .filter-group--search input[type="text"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Jobs table scrolls horizontally rather than overflowing */
+  #jobs-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Auth modal — hide gradient panel, show form only */
+  .modal-content--auth {
+    flex-direction: column;
+    width: 95vw;
+  }
+
+  .auth-preview-panel {
+    display: none;
+  }
+
+  .auth-form-panel {
+    flex: 1;
+    padding: 32px 24px;
+  }
+
+  /* Resume manager — stack sidebar above editor */
+  .resume-manager {
+    grid-template-columns: 1fr;
+  }
+
+  .resume-sidebar {
+    border-right: none;
+    border-bottom: 1px solid #e6e6e6;
+    padding-right: 0;
+    padding-bottom: 16px;
+  }
+
+  /* Job detail hero — stack score ring below info */
+  .jd-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  /* Detail rows — stack label above value */
+  .detail-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .detail-label {
+    color: #888;
+    font-size: 12px;
+  }
+
+  /* Job detail modal full width */
+  .modal-content--job-detail {
+    width: 98vw;
+    max-height: 95vh;
+    padding: 14px 14px;
+  }
+
+  /* Standard modal full width */
+  .modal-content {
+    width: 95vw;
+    padding: 20px 16px;
+  }
+
+  /* Help modal full width */
+  .modal-content--help {
+    width: 95vw;
+    max-height: 90vh;
+  }
+}

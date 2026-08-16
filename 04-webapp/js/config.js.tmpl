@@ -1,0 +1,13 @@
+// Generated at deploy time by apply.sh — do not edit js/config.js directly.
+//
+// WEB_BASE_URL exists because the site is not served from a domain root. Object
+// Storage hosts it under /n/<namespace>/b/<bucket>/o/, so window.location.origin
+// drops the path and every derived URL (OAuth redirect, post-logout landing,
+// sign-out navigation) would point at a page that does not exist.
+export const CONFIG = {
+  API_BASE_URL: "${API_BASE_URL}",
+  DOMAIN_URL:   "${DOMAIN_URL}",
+  CLIENT_ID:    "${CLIENT_ID}",
+  WEB_BASE_URL: "${WEB_BASE_URL}",
+  SIGNUP_URL:   "${SIGNUP_URL}"
+};

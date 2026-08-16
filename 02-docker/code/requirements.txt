@@ -1,2 +1,9 @@
+# FDK — OCI Functions runtime contract (ctx, data) -> Response
 fdk>=0.1.70
-oci>=2.100.0
+
+# OCI SDK — NoSQL, Object Storage, Queue, Generative AI, Resource Principals
+oci>=2.126.0
+
+# HTML parsing for the worker's job-posting scrape. Parsed with the stdlib
+# html.parser, so no lxml/C build chain is pulled into the image.
+beautifulsoup4>=4.12.0

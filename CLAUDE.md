@@ -1,31 +1,29 @@
-# CLAUDE.md — oci-identity-app
+# CLAUDE.md — oci-resume-app
 
-A serverless notes CRUD API on OCI, secured with **OCI IAM Identity Domains**
-(OAuth2 / OIDC, Authorization Code + PKCE). Five Functions handle one REST
-operation each, OCI NoSQL Database stores the data, API Gateway validates the
-caller's JWT and routes requests, and a static Object Storage site serves the
-SPA. This is the authenticated sibling of `oci-crud-example` — the OCI analog of
-`aws-cognito-app` (which adds Cognito auth to `aws-crud-example`).
+OCI port of the resume scoring application ("My Jobs"). Users upload resumes and
+submit job postings (URL or pasted text); the app uses **OCI Generative AI** to
+score resume-to-job compatibility (0–100) **asynchronously**. Scored jobs support
+file attachments in Object Storage. Token usage is tracked per user with a
+configurable lifetime cap enforced at submission time.
 
-`oci-identity-app ≈ oci-crud-example + Identity Domains auth + per-user notes.`
+Completes the set alongside `aws-resume-app`, `gcp-resume-app` and the Azure
+build. Ported from **`aws-resume-app`** (closest architecture: single-table key
+design, two functions, same module split) on the auth scaffolding of
+**`oci-identity-app`**, with the async tier from **`oci-queue-keygen`**.
 
 ---
 
-## What This Project Does
+## Deployment Commands
 
-The browser runs a PKCE login against an Identity Domains app, gets an OIDC **ID
-token**, and sends it to API Gateway. The gateway validates the token signature
-against the domain's JWKS, then injects the verified `sub` claim as the
-`X-User-Sub` header before invoking a Function. Each Function uses `sub` as the
-NoSQL shard key, so users only ever see their own notes.
+```bash
+./apply.sh      # check_env → setup_domain → 01-ocir → 02-docker → 03-functions → 04-webapp
+./destroy.sh    # tears down app resources (see teardown caveat below)
+./delete_domain.sh  # then removes the identity domain
+./check_env.sh  # tools, OCI connectivity, Gen AI model availability
+./validate.sh   # asserts auth is enforced and the async tier is live
+```
 
-| Method | Path | Function | Auth | Owner |
-|--------|------|----------|------|-------|
-| POST | `/notes` | create-note | JWT required | `sub` claim |
-| GET | `/notes` | list-notes | JWT required | `sub` claim |
-| GET | `/notes/{id}` | get-note | JWT required | `sub` claim |
-| PUT | `/notes/{id}` | update-note | JWT required | `sub` claim |
-| DELETE | `/notes/{id}` | delete-note | JWT required | `sub` claim |
+There are no test or lint commands configured.
 
 ---
 
@@ -33,30 +31,42 @@ NoSQL shard key, so users only ever see their own notes.
 
 ```
 Browser (SPA on Object Storage)
-   │  1. PKCE login  → Identity Domain /oauth2/v1/authorize
+   │  1. PKCE login → Identity Domain /oauth2/v1/authorize
    │  2. callback.html exchanges code → tokens at /oauth2/v1/token
-   │  3. stores id_token in sessionStorage
+   │  3. stores id_token in localStorage
    ▼
-API Gateway — notes-gateway (PUBLIC)
-   │  authentication: JWT_AUTHENTICATION (REMOTE_JWKS = domain /admin/v1/SigningCert/jwk)
-   │  each route: authorization = AUTHENTICATION_ONLY
-   │  forwards the (validated) Authorization header; injects X-Note-Id for {id} routes
+API Gateway — resume-gateway (PUBLIC)
+   │  authentication: JWT_AUTHENTICATION (REMOTE_JWKS = domain SigningCert/jwk)
+   │  every route: authorization = AUTHENTICATION_ONLY
+   │  injects X-Route + path params as headers; forwards Authorization
    ▼
-OCI Functions (one image, FUNCTION_TYPE dispatch, Resource Principal auth)
-   │  derives owner = `sub` by decoding the already-verified bearer token
+Function: resume-api  (FUNCTION_TYPE=api, 60s)
+   │  dispatches on X-Route → jobs / resumes / folders / users / attachments
+   │  POST /jobs writes the row, snapshots the resume, enqueues, returns
    ▼
-OCI NoSQL Table: notes   PK: SHARD(owner=sub) + id(UUID4)
+OCI Queue: resume-job-requests
+   ▼
+Connector Hub: resume-queue-to-worker   (batch_size_in_num = 1)
+   ▼
+Function: resume-worker (FUNCTION_TYPE=worker, 300s, 2GB)
+   │  scrape → GenAI extract → GenAI score → write analysis + score
+   ▼
+NoSQL: resume_app          Object Storage: resume-backend-<hex> (private)
+  pk=USER#<sub>, sk=..., doc JSON      blobs; resume-web-<hex> is the public SPA
 ```
 
-**Token choice:** the SPA sends the **ID token** (its `aud` is the app
-client_id), so the gateway validates `audiences = [client_id]` with no custom
-resource-app/scope plumbing.
+### Request Flow
 
-**Where `sub` comes from:** the gateway's `${request.auth[sub]}` header transform
-does NOT resolve under JWT_AUTHENTICATION (it 500s the request), so we do NOT
-inject `X-User-Sub`. Instead the gateway forwards the already-validated
-Authorization header and `func.py` decodes the token's `sub` itself (`_owner` →
-`_sub_from_bearer`). Safe because the gateway already verified signature/iss/aud.
+**Resume upload:** `POST /resumes` → api Function → Object Storage (text) +
+NoSQL (metadata)
+
+**Job scoring:**
+1. `POST /jobs` → api Function → snapshots resume into the job prefix, puts a
+   Queue message → returns `submitted`
+2. Connector Hub flushes (1 message) → worker Function → fetches URL if needed →
+   Gen AI field extraction → Gen AI score → analysis to Object Storage → NoSQL
+   updated with score and `Scored`
+3. Frontend polls `GET /jobs` to show updated scores
 
 ---
 
@@ -64,140 +74,187 @@ Authorization header and `func.py` decodes the token's `sub` itself (`_owner` �
 
 ```
 01-ocir/        OCIR container repository (Terraform)
-02-docker/      Docker image build + push (build.sh); code/func.py = all 5 handlers
+02-docker/      Image build + push (build.sh); code/ = all handler modules
+                  func.py         FDK entry; FUNCTION_TYPE + X-Route dispatch
+                  common.py       Request shim, RP signer, auth, config
+                  nosql_util.py   single-table access; hides the `doc` column
+                  os_util.py      Object Storage + object-name conventions
+                  jobs.py resumes.py folders.py users.py attachments.py
+                  worker.py       scrape + Generative AI scoring pipeline
 03-functions/   Backend Terraform:
                   network.tf   VCN + public subnet + IGW + security list
-                  nosql.tf     NoSQL table (SHARD(owner) + id)
-                  functions.tf Functions Application + 5 Functions
-                  identity.tf  Identity Domains app (SPA, PKCE, no secret) + domain lookup
-                  api.tf       API Gateway + JWT auth + per-route authz + header inject
-                  storage.tf   Web bucket (here so identity.tf can register its callback)
+                  nosql.tf     single table, pk/sk + doc JSON
+                  functions.tf Application + api Function + worker Function
+                  queue.tf     OCI Queue
+                  sch.tf       Connector Hub (Queue → worker)
+                  identity.tf  Identity Domains app (SPA, PKCE) + domain lookup
+                  api.tf       API Gateway + JWT auth + 20 routes
+                  storage.tf   web bucket (public) + backend bucket (private)
                   iam.tf       Dynamic Group + policies
-                  outputs.tf   api endpoint, bucket, client_id, domain url, website url
-04-webapp/      SPA upload only (bucket created in 03):
-                  index.html.tmpl  SPA + PKCE login/logout + auth chooser modal
-                  callback.html    code→token exchange
-                  storage.tf       uploads index/config/callback/favicon to the bucket
-setup_domain.sh One-time domain bootstrap (see below); writes env.sh
-delete_domain.sh Inverse of setup_domain.sh — deactivate + delete domain, rm env.sh
-apply.sh        Runs check_env.sh + setup_domain.sh, then all 4 phases
-destroy.sh / check_env.sh / validate.sh
-env.sh          Generated by setup_domain.sh; gitignored; sourced by the scripts
+                  logging.tf   Functions resource logs
+                  outputs.tf
+04-webapp/      SPA upload only (buckets created in 03):
+                  index.html job.html callback.html css/ js/
+                  js/config.js.tmpl → js/config.js rendered by apply.sh
+genai-config.sh Model selection — single source of truth
+setup_domain.sh One-time domain bootstrap; writes env.sh
+delete_domain.sh Inverse of setup_domain.sh
+apply.sh / destroy.sh / check_env.sh / validate.sh
 ```
 
-Phases are numbered by directory: **01-ocir → 02-docker → 03-functions →
-04-webapp**. (Earlier docs referenced a 2-phase `01-functions`/`02-webapp`
-layout; the real layout is these four.)
-
 ---
 
-## Key Differences From oci-crud-example
+## Data Model (NoSQL single table `resume_app`)
 
-1. **Identity Domains app** (`03-functions/identity.tf`) — public SPA client,
-   Auth Code + PKCE, no secret. Looks up the domain via `oci_identity_domains` /
-   `oci_identity_domain` data sources to get the `idcs_endpoint` (domain URL).
-2. **API Gateway JWT auth** (`03-functions/api.tf`) — deployment-level
-   `authentication { type = "JWT_AUTHENTICATION" ... }` with REMOTE_JWKS; every
-   route opts in with `authorization { type = "AUTHENTICATION_ONLY" }`.
-3. **Per-user owner** — `func.py` derives the owner from the caller's `sub` by
-   decoding the forwarded (already-validated) bearer token instead of the
-   hardcoded `"global"`. No identity → 401. The list query filters on the
-   caller's `sub` (single-quote escaped).
-4. **Web bucket moved to phase 3** — so the app's OAuth redirect URI can point
-   at the deterministic Object Storage callback URL. Phase 4 only uploads.
-5. **SPA auth** — `index.html.tmpl` gains sign-in/out + PKCE; `callback.html` +
-   generated `config.json` (domainUrl, clientId, redirectUri, apiBaseUrl).
-
----
-
-## Prerequisites
-
-- `oci`, `terraform`, `docker`, `jq`, `envsubst` in PATH
-- OCI CLI configured (`~/.oci/config`, API key)
-- The deploy principal needs permission to **create identity domains** and
-  **Identity Domain Administrator** on the new domain (setup_domain.sh creates the
-  domain and talks to its SCIM API)
-- No pre-existing domain or console clicks needed — `setup_domain.sh` builds it.
-  End users create their own logins via self-registration.
-
----
-
-## Domain bootstrap — fully automated (no manual console steps)
-
-`setup_domain.sh` does everything the identity domain needs, and it is now
-**invoked automatically by `apply.sh`** (right after `check_env.sh`). It is
-idempotent — safe to re-run. It:
-
-1. Creates an **External User** domain (self-registration requires this tier) and
-   waits for it to become active.
-2. Enables **Access Signing Certificate** so API Gateway can read the JWKS
-   anonymously (without this every authenticated call 500s).
-3. Creates + activates the **self-registration profile** (immediate sign-in) via
-   a direct SCIM `POST` — the CLI can't create it (see the notes in the script).
-4. Writes **`env.sh`** (`OCI_DOMAIN_NAME`, `OCI_SIGNUP_PROFILE_NAME`), which the
-   build scripts source automatically.
-
-Override names via env vars (or a pre-existing `env.sh`): `OCI_DOMAIN_NAME`
-(default `notes-app`), `OCI_SIGNUP_PROFILE_NAME` (default `spa-signup`),
-`OCI_LICENSE_TYPE` (default `external-user`).
-
----
-
-## Deployment
-
-```bash
-./apply.sh      # check_env → setup_domain → 01-ocir → 02-docker → 03-functions → 04-webapp
-./destroy.sh    # tears down app resources (see cleanup caveat below)
-./validate.sh   # asserts unauthenticated calls are rejected; prints web URL
+```
+pk  STRING   USER#<user_id>       shard key
+sk  STRING   RESUME#|JOB#|FOLDER#|USER#USAGE
+doc JSON     everything else
 ```
 
-`apply.sh` reads Phase-3 outputs (API URL, bucket, client_id, domain URL),
-resolves the self-registration profile id by name, generates `index.html`
-(envsubst `${API_BASE}`) and `config.json`, then uploads via Phase 4.
+- `pk=USER#<id>`, `sk=RESUME#<id>` — resume metadata
+- `pk=USER#<id>`, `sk=JOB#<id>` — job metadata + `attachments` array
+- `pk=USER#<id>`, `sk=FOLDER#<id>` — folder name + metadata
+- `pk=USER#<id>`, `sk=USER#USAGE` — `tokens_used`, `token_limit`
 
----
+**Why `doc JSON`:** DynamoDB is schemaless and the four entity types differ
+freely; OCI NoSQL requires a declared schema. A JSON payload column keeps the
+entities heterogeneous (and lets a job carry a nested attachments array) while
+the key columns stay typed so `SHARD()` still partitions. `nosql_util.py`
+flattens rows to `{pk, sk, ...attrs}` so the ported handlers read like their
+DynamoDB originals.
 
-## Teardown — the domain is torn down by its own script
+### Object Storage layout (private backend bucket)
 
-`destroy.sh` removes the Terraform-managed resources (Functions, NoSQL, API
-Gateway, IAM, buckets, OCIR) and deactivates the SPA app so it can be deleted.
-**It does NOT touch the identity domain** — Terraform can't manage
-identity-domain lifecycle, so the domain is handled by its own out-of-band
-script, the inverse of `setup_domain.sh`:
-
-```bash
-./destroy.sh          # 1. remove Terraform resources (incl. the SPA app)
-./delete_domain.sh    # 2. deactivate + delete the domain, remove env.sh
+```
+users/USER#{id}/resumes/RESUME#{id}.txt
+users/USER#{id}/jobs/JOB#{id}/job_description.txt
+users/USER#{id}/jobs/JOB#{id}/resume_snapshot.txt
+users/USER#{id}/jobs/JOB#{id}/job_analysis.txt
+users/USER#{id}/jobs/JOB#{id}/notes.txt
+users/USER#{id}/jobs/JOB#{id}/attachments/{att_id}/{filename}
 ```
 
-Run them in that order — `delete_domain.sh` deactivates the domain, deletes it
-(which also removes the self-registration profile), and deletes `env.sh`. It is
-idempotent: if the domain is already gone it just cleans up `env.sh`.
-
-(External User domains bill per monthly active user, so run `delete_domain.sh`
-when you're finished with the demo.)
+Attachments transfer as base64 JSON (10 MB cap, 5 per job) — no pre-authenticated
+requests, no multipart.
 
 ---
 
-## Notes / gotchas (all resolved, kept for reference)
+## Key Differences From aws-resume-app
 
+1. **X-Route header dispatch.** The AWS Lambda routes on `event["rawPath"]`; the
+   FDK has no equivalent guarantee (`ctx.RequestURL()` reflects the backend
+   invoke URL, not the matched route template). API Gateway states the matched
+   route in `X-Route` and injects path params as `X-Job-Id` / `X-Resume-Id` /
+   `X-Folder-Id` / `X-Attachment-Id`. Adding a route means editing `api.tf` **and**
+   the `ROUTES` table in `func.py`.
+2. **Queue + Connector Hub instead of SQS → Lambda.** There is no
+   invoke-on-arrival semantic; the connector polls and flushes on a size or time
+   threshold, and `batch_time_in_sec` cannot go below 60. `batch_size_in_num = 1`
+   is what makes delivery prompt. Leaving it at the default is the most common
+   way to conclude the pipeline is broken when it is only batching.
+3. **Generative AI, not Bedrock.** `GenericChatRequest` + `OnDemandServingMode`
+   against a per-region inference endpoint. Prompts were reworked for Llama (see
+   below) and the JSON parse is more defensive.
+4. **`doc JSON` single table** rather than native schemaless items.
+5. **Two buckets, no CloudFront.** The SPA is served straight from Object
+   Storage under `/n/<ns>/b/<bucket>/o/`, which is *not* a domain root — see the
+   webapp note below.
+6. **Token accumulation is read-modify-write.** DynamoDB's atomic `ADD` has no
+   equivalent for a field inside a JSON column, so concurrent scoring for one
+   user can lose an update. Acceptable: it drives a usage ring and a soft cap.
+
+---
+
+## Generative AI
+
+Model selection lives in **`genai-config.sh`** and flows to Terraform as
+`TF_VAR_genai_model_id`. Default: **`meta.llama-4-scout-17b-16e-instruct`**.
+
+**Why not Gemini or Cohere.** As of 2026-08-16 in `us-ashburn-1`: every Cohere
+chat model is on-demand retired, the entire Grok 3/4/4-fast line retired
+2026-08-15, there is no Anthropic model at all, and Gemini 2.5 is retiring
+upstream. Meta's Llama 4 entries carry no retirement date and have open weights.
+`check_env.sh` fails the deploy if the configured model is not live.
+
+**Prompt differences from Claude.** Llama needs the output contract stated first
+and last, and needs to be told explicitly that the response begins with `{` —
+otherwise it opens with a sentence of preamble. `parse_json_object()` therefore
+slices from the first `{` to the last `}` rather than trusting the whole string,
+and the score check accepts a float (`82.0`) as well as an int.
+
+**Token usage** is not reported consistently across model families, so
+`_extract_usage()` falls back to a chars/4 estimate rather than letting the
+usage ring go blank.
+
+---
+
+## Notes / gotchas
+
+- **Resource Principal propagation.** A Function container caches its dynamic
+  group membership at boot. A container that started before the DG or policy
+  propagated keeps a groupless token and returns 404 `NotAuthorizedOrNotFound`
+  for its entire life, while a container started later works — same image, same
+  policy. Worse, the OCI SDK treats that 404 as *transient* and retries it, so
+  the first calls hang for the full function timeout and later ones fail
+  instantly once the circuit breaker opens: one fault, two symptoms. **Recycle
+  the container; do not keep editing the policy.**
+- **The SPA is not served from a domain root.** Object Storage hosts it under
+  `/n/<ns>/b/<bucket>/o/`, so `window.location.origin` drops the path. All
+  browser-side URLs derive from `CONFIG.WEB_BASE_URL`, and asset references in
+  the HTML are relative (`css/styles.css`, not `/css/styles.css`).
+- **PKCE is mandatory.** The Identity Domains app is a public client with no
+  secret; the token endpoint rejects an exchange without a verifier. `getLoginUrl()`
+  is therefore async (it hashes an S256 challenge) — await it.
+- **`crypto.subtle` needs a secure context**, so this only works over HTTPS.
+- **Identity Domains rotates refresh tokens** (Cognito does not), so the new one
+  must be stored or the next refresh fails.
 - **JWKS is private by default** → gateway 500s until Access Signing Certificate
   is enabled. `setup_domain.sh` handles it.
 - **`issuers`** in `api.tf` = `https://identity.oraclecloud.com/` (trailing
-  slash). If a domain emits a domain-specific issuer, decode a live token's `iss`
-  and match it, or the gateway 401s.
-- **Self-registration link** doesn't render on OCI's stock sign-in page even with
-  `show_on_login_page=true`, so the SPA shows its own "Create Account" chooser
-  that links to `<domain>/ui/v1/signup?profileid=<id>`.
-- **MFA** is left at the domain default (enrollment on first sign-in).
+  slash). If a domain emits a domain-specific issuer, decode a live token's
+  `iss` and match it, or the gateway 401s.
+- **PATCH must be in the CORS allowed_methods** — `/jobs/{id}/notes` and
+  `/jobs/{id}/folder` are the only PATCH routes, and omitting it fails just
+  those two at preflight.
+- **`destroy.sh` must empty the backend bucket first.** The functions fill it at
+  runtime with objects Terraform knows nothing about, and Object Storage refuses
+  to delete a non-empty bucket.
+
+---
+
+## Teardown
+
+`destroy.sh` removes the Terraform-managed resources and deactivates the SPA app
+so it can be deleted. **It does NOT touch the identity domain** — Terraform
+cannot manage domain lifecycle:
+
+```bash
+./destroy.sh          # 1. purge backend bucket, remove Terraform resources
+./delete_domain.sh    # 2. deactivate + delete the domain, remove env.sh
+```
+
+External User domains bill per monthly active user, so run `delete_domain.sh`
+when finished.
 
 ---
 
 ## Modifying Function Code
 
-1. Edit `02-docker/code/func.py`.
-2. Re-run `./apply.sh` — `build.sh` content-hashes the source, producing a new
-   image tag that forces the Functions to update.
+1. Edit any file under `02-docker/code/`.
+2. Re-run `./apply.sh` — `build.sh` content-hashes **every** file in that
+   directory (globbed, not listed), so any change produces a new image tag and
+   forces the Functions to update. A hand-maintained file list here is how an
+   edit silently stops deploying.
 
 Keep bytecode out of the tree: compile with `PYTHONDONTWRITEBYTECODE=1` and
 never commit `__pycache__/` or `*.pyc`.
+
+---
+
+## Code Commenting Standards
+
+Comment lines ≤ 80 characters. Explain intent and rationale, not what the code
+already says. Python modules get a structured `# ===` header and non-trivial
+functions get docstrings; Terraform uses section banners explaining why the
+infrastructure exists; shell keeps `set -euo pipefail` and bannered sections.

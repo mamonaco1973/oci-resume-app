@@ -10,20 +10,20 @@
 # --------------------------------------------------------------------------------
 # VCN
 # --------------------------------------------------------------------------------
-resource "oci_core_vcn" "notes" {
+resource "oci_core_vcn" "resume" {
   compartment_id = var.compartment_id
   cidr_block     = "10.0.0.0/16"
-  display_name   = "notes-vcn"
-  dns_label      = "notesvn"
+  display_name   = "resume-vcn"
+  dns_label      = "resumevcn"
 }
 
 # --------------------------------------------------------------------------------
 # Internet Gateway — default route for public subnet egress
 # --------------------------------------------------------------------------------
-resource "oci_core_internet_gateway" "notes" {
+resource "oci_core_internet_gateway" "resume" {
   compartment_id = var.compartment_id
-  vcn_id         = oci_core_vcn.notes.id
-  display_name   = "notes-igw"
+  vcn_id         = oci_core_vcn.resume.id
+  display_name   = "resume-igw"
   enabled        = true
 }
 
@@ -32,11 +32,11 @@ resource "oci_core_internet_gateway" "notes" {
 # --------------------------------------------------------------------------------
 resource "oci_core_route_table" "public" {
   compartment_id = var.compartment_id
-  vcn_id         = oci_core_vcn.notes.id
-  display_name   = "notes-public-rt"
+  vcn_id         = oci_core_vcn.resume.id
+  display_name   = "resume-public-rt"
 
   route_rules {
-    network_entity_id = oci_core_internet_gateway.notes.id
+    network_entity_id = oci_core_internet_gateway.resume.id
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
   }
@@ -47,8 +47,8 @@ resource "oci_core_route_table" "public" {
 # --------------------------------------------------------------------------------
 resource "oci_core_security_list" "public" {
   compartment_id = var.compartment_id
-  vcn_id         = oci_core_vcn.notes.id
-  display_name   = "notes-public-sl"
+  vcn_id         = oci_core_vcn.resume.id
+  display_name   = "resume-public-sl"
 
   # Allow all egress — Functions need to reach OCIR (image pull) and OCI NoSQL.
   egress_security_rules {
@@ -75,10 +75,10 @@ resource "oci_core_security_list" "public" {
 # --------------------------------------------------------------------------------
 resource "oci_core_subnet" "public" {
   compartment_id    = var.compartment_id
-  vcn_id            = oci_core_vcn.notes.id
+  vcn_id            = oci_core_vcn.resume.id
   cidr_block        = "10.0.0.0/24"
-  display_name      = "notes-public-subnet"
-  dns_label         = "notespub"
+  display_name      = "resume-public-subnet"
+  dns_label         = "resumepub"
   route_table_id    = oci_core_route_table.public.id
   security_list_ids = [oci_core_security_list.public.id]
 

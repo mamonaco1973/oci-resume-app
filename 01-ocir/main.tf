@@ -1,7 +1,7 @@
 # ================================================================================
 # Phase 1: OCIR — OCI Container Registry Repository
 # ================================================================================
-# Creates the private container repository that holds the notes-functions image.
+# Creates the private container repository that holds the resume-functions image.
 # Must run before 02-docker so the repository exists before the image is pushed.
 # ================================================================================
 

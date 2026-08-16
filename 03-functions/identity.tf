@@ -6,7 +6,7 @@
 # Pool app client used in aws-cognito-app.  The browser runs the PKCE flow against
 # this app, receives an OIDC ID token, and sends it to the API Gateway, which
 # validates the token signature against the domain's JWKS before invoking any
-# function.  The validated `sub` claim becomes the per-user note owner.
+# function.  The validated `sub` claim becomes the per-user data owner.
 #
 # Token model (initial port): the SPA sends the ID TOKEN as the bearer token.
 # An ID token's `aud` is deterministically the app client_id, so the gateway can
@@ -46,7 +46,7 @@ data "oci_identity_domain" "target" {
 resource "oci_identity_domains_app" "spa" {
   idcs_endpoint = data.oci_identity_domain.target.url
   schemas       = ["urn:ietf:params:scim:schemas:oracle:idcs:App"]
-  display_name  = "notes-spa"
+  display_name  = "resume-spa"
 
   # Well-known template for a custom OAuth application.  If this errors on your
   # provider version, move the string to `well_known_id` instead of `value`.

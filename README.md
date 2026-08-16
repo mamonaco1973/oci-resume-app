@@ -1,323 +1,209 @@
-# OCI Serverless CRUD API — Authenticated with IAM Identity Domains
+# OCI Resume Scoring — Asynchronous AI with OCI Generative AI
 
-This project delivers a fully automated **serverless CRUD (Create, Read, Update,
-Delete) API** on OCI, built using **OCI API Gateway**, **OCI Functions**, and
-**OCI NoSQL Database**, and secured with **OCI IAM Identity Domains** (OAuth2 /
-OIDC, Authorization Code + PKCE).
+This project delivers a fully automated **AI resume scoring application** on OCI,
+built with **OCI API Gateway**, **OCI Functions**, **OCI NoSQL Database**, **OCI
+Queue**, **Connector Hub**, and **OCI Generative AI**, and secured with **OCI IAM
+Identity Domains** (OAuth2 / OIDC, Authorization Code + PKCE).
 
-It uses **Terraform** and **Python (oci SDK + fdk)** to provision and deploy a
-**stateless, REST-style backend** that exposes HTTP endpoints for managing simple
-“notes” data — all without running or managing any compute instances.
+Users upload one or more resumes, then submit job postings — either a URL or
+pasted text. The app scrapes the posting, asks a large language model to extract
+the structured job description, then scores the resume against it from 0 to 100
+with a written analysis of strengths and gaps.
 
-This is the **authenticated** sibling of **oci-crud-example**, and the OCI analog
-of **aws-cognito-app** (which adds Cognito auth to aws-crud-example). API Gateway
-validates the caller's JWT against the identity domain's JWKS and passes the
-verified `sub` claim to the Functions, so **each user only sees their own notes**.
+This is the OCI member of a four-cloud set alongside **aws-resume-app**,
+**gcp-resume-app** and the Azure build. The workload is identical in all four;
+only the plumbing differs.
 
-For testing and demonstration purposes, a lightweight **HTML web frontend** runs
-the browser PKCE login and then interacts with the deployed API, allowing signed-in
-users to create, view, update, and delete their notes.
+![diagram](oci-resume-app.png)
 
-![webapp](webapp.png)
+## Why this is asynchronous
 
-This design follows a **serverless microservice architecture** where API Gateway
-routes requests to dedicated OCI Functions, OCI NoSQL Database provides fully
-managed persistence, and OCI handles scaling, availability, and fault tolerance
-automatically.
+Scoring is not done inline, and that is not a design preference.
 
-![diagram](oci-identity-app.png)
+A page fetch plus two model calls takes far longer than **API Gateway will hold a
+request open**. The synchronous version of this endpoint cannot exist — on any of
+the four clouds. So `POST /jobs` writes the job row, snapshots the resume, drops
+a message on a queue and returns immediately with `submitted`. A separate worker
+drains the queue, does the slow work, and writes the score back. The browser
+polls until the status changes.
 
-Key capabilities demonstrated:
+Every cloud in this set solves that the same way and names it differently:
 
-1. **Serverless CRUD API** – Implements REST-style endpoints backed by OCI
-   Functions for creating, retrieving, listing, updating, and deleting records.
-2. **Stateless Compute Layer** – Each Function is independent and stateless,
-   enabling horizontal scaling and zero idle cost.
-3. **Managed NoSQL Storage** – Uses OCI NoSQL Database with on-demand capacity
-   for low-latency, fully managed data persistence.
-4. **Container-Based Functions** – OCI Functions run *containers*, not raw code:
-   one Docker image is built, pushed to **OCIR** (OCI's container registry), and
-   pulled by all five Functions at invoke time.
-5. **Infrastructure as Code (IaC)** – Terraform provisions API Gateway routes,
-   Functions, IAM policies, the NoSQL table, and supporting resources in a
-   repeatable, auditable way.
-6. **Browser-Based Test Client** – A simple static HTML frontend demonstrates
-   real-time interaction with the API without requiring additional tooling.
+| Cloud | Queue | Bridge to compute |
+|---|---|---|
+| AWS | SQS | Lambda event source mapping |
+| GCP | Pub/Sub | Eventarc |
+| Azure | Service Bus | Functions trigger |
+| **OCI** | **Queue** | **Connector Hub** |
 
-Together, these components form a **clean, minimal reference architecture** for
-building serverless APIs on OCI — suitable for learning, prototyping, or
-extending into more advanced event-driven and authenticated microservices.
+OCI is the outlier, and it is worth knowing why. Connector Hub has **no
+invoke-on-arrival semantic**. It polls the queue and flushes a batch when either
+a size or a time threshold is reached, and the timer starts with the first
+message of the batch. `batch_time_in_sec` cannot be set below 60 — so at the
+default batch size a single submitted job waits the **full minute** before the
+worker ever sees it. Setting `batch_size_in_num = 1` is what makes delivery
+prompt (1–2 seconds). Leaving those at their defaults is the most common way to
+conclude the pipeline is broken when it is merely batching.
+
+## Key capabilities demonstrated
+
+1. **Asynchronous AI pipeline** – Queue plus Connector Hub decouples a slow
+   inference workload from a request/response API that could never contain it.
+2. **OCI Generative AI** – On-demand inference against Meta Llama 4, with
+   per-user token accounting and a lifetime cap enforced before work is accepted.
+3. **Serverless compute** – Two OCI Functions from one container image, selected
+   by an environment variable: a short-timeout API function and a long-timeout
+   worker.
+4. **Managed NoSQL storage** – A single table with a composite key and a JSON
+   payload column holding four different entity types.
+5. **Authenticated per-user isolation** – API Gateway validates the caller's JWT
+   against the identity domain's JWKS; the verified `sub` claim is the NoSQL
+   shard key, so users only ever see their own data.
+6. **Infrastructure as Code** – Terraform provisions everything across four
+   phases, repeatably and auditably.
+
+## Architecture
+
+```
+Browser (SPA on Object Storage)
+   │  PKCE login → Identity Domain → id_token
+   ▼
+API Gateway — resume-gateway
+   │  JWT_AUTHENTICATION against the domain JWKS
+   │  injects X-Route + path params; forwards Authorization
+   ▼
+Function: resume-api (60s)
+   │  POST /jobs → snapshot resume → enqueue → return "submitted"
+   ▼
+OCI Queue → Connector Hub (batch_size_in_num = 1)
+   ▼
+Function: resume-worker (300s, 2 GB)
+   │  scrape posting → Gen AI extract fields → Gen AI score
+   ▼
+NoSQL (score + status)      Object Storage (analysis, snapshots, attachments)
+```
 
 ## API Gateway Endpoints
 
-The **Notes API** exposes REST-style CRUD endpoints through **OCI API Gateway**.
-These endpoints allow clients to create, list, retrieve, update, and delete
-notes stored in OCI NoSQL Database. All endpoints return JSON and work with both
-CLI and browser-based clients.
+All twenty routes are backed by a single Function that dispatches internally.
+Every route requires a valid `Authorization: Bearer <id_token>` header; the
+gateway rejects unauthenticated calls before any function runs.
 
-> Note: The note `owner` is the authenticated user's `sub` claim, injected by
-> API Gateway as the `X-User-Sub` header after it validates the JWT. All requests
-> require a valid `Authorization: Bearer <id_token>` header.
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/register` | Idempotent first-sign-in record; enforces the user cap |
+| GET | `/usage` | Token consumption and limit for the usage ring |
+| GET | `/folders` | List folders |
+| POST | `/folders` | Create a folder |
+| DELETE | `/folders/{folder_id}` | Delete a folder; jobs survive, grouping is cleared |
+| GET | `/jobs` | List jobs with status, score and attachment count |
+| POST | `/jobs` | Submit a job for scoring (returns immediately) |
+| GET | `/jobs/{job_id}` | Job metadata plus all stored text artifacts |
+| DELETE | `/jobs/{job_id}` | Delete the job and every object under its prefix |
+| PATCH | `/jobs/{job_id}/notes` | Update notes (the only mutable field) |
+| PATCH | `/jobs/{job_id}/folder` | Move a job into or out of a folder |
+| GET | `/jobs/{job_id}/attachments` | List attachments |
+| POST | `/jobs/{job_id}/attachments` | Upload an attachment (base64 JSON, 10 MB) |
+| GET | `/jobs/{job_id}/attachments/{attachment_id}` | Download an attachment |
+| DELETE | `/jobs/{job_id}/attachments/{attachment_id}` | Delete an attachment |
+| GET | `/resumes` | List resumes |
+| POST | `/resumes` | Create a resume |
+| GET | `/resumes/{resume_id}` | Retrieve a resume with full text |
+| PUT | `/resumes/{resume_id}` | Replace a resume |
+| DELETE | `/resumes/{resume_id}` | Delete a resume and its stored text |
 
-### API Endpoint Summary
+## Choosing the model
 
-| Method | Path | Purpose | Input | NoSQL Operation |
-|------|------|--------|------|--------------------|
-| POST | `/notes` | Create a new note | JSON body (`title`, `note`) | `update_row` (IF_ABSENT) |
-| GET | `/notes` | List all notes | None | `query` (owner = "global") |
-| GET | `/notes/{id}` | Retrieve a single note by ID | Path param (`id`) | `get_row` |
-| PUT | `/notes/{id}` | Update an existing note | Path param + JSON body | `update_row` (IF_PRESENT) |
-| DELETE | `/notes/{id}` | Delete a note by ID | Path param (`id`) | `delete_row` |
+Model selection lives in **`genai-config.sh`**, the single source of truth shared
+by the deploy scripts and Terraform. The default is
+**`meta.llama-4-scout-17b-16e-instruct`**.
 
-> **OCI path-parameter quirk:** API Gateway does not pass `{id}` to the Function
-> body. A header-transformation policy injects `${request.path[id]}` as the
-> `X-Note-Id` request header, which the handler reads via
-> `ctx.Headers().get("x-note-id")`.
+That choice is deliberate. OCI retires on-demand models aggressively — as of
+August 2026 in `us-ashburn-1` every Cohere chat model is already retired, the
+entire Grok 3/4 line retired on a single day, and there is no Anthropic model at
+all. Google Gemini is available, but Gemini 2.5 is retiring upstream. Meta's
+Llama 4 entries carry no retirement date and have open weights behind them.
 
-### Request & Response Characteristics
+`check_env.sh` refuses to deploy if the configured model is not currently served
+on demand, so a retirement surfaces as a clear pre-flight error rather than every
+job silently failing later.
 
-| Aspect | Behavior |
-|-----|--------|
-| Authentication | Required — Identity Domains JWT (`Authorization: Bearer <id_token>`) |
-| Content Type | `application/json` |
-| Owner Model | Per-user — the JWT `sub` claim (via `X-User-Sub` header) |
-| Response Format | JSON |
-| Clients | Browser SPA (PKCE), or curl with a bearer token |
-| Error Handling | Standard HTTP status codes (401 when the token is missing/invalid) |
+To see what is live in your tenancy:
 
----
-
-### POST /notes
-
-**Purpose:**
-Creates a new note in OCI NoSQL Database.
-
-**Request Body (JSON):**
-```json
-{
-  "title": "Test Note 1",
-  "note": "This is test note 1"
-}
-```
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|------|------|----------|-------------|
-| title | string | Yes | Note title |
-| note | string | Yes | Note body/content |
-
-**Example Request:**
 ```bash
-curl -s -X POST https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Test Note 1","note":"This is test note 1"}'
-```
-
-**Example Response (201):**
-```json
-{
-  "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
-  "title": "Test Note 1",
-  "note": "This is test note 1"
-}
-```
-
----
-
-### GET /notes
-
-**Purpose:**
-Lists all notes for the demo owner (`"global"`).
-
-**Example Request:**
-```bash
-curl -s https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes
-```
-
-**Example Response (200):**
-```json
-{
-  "items": [
-    {
-      "owner": "global",
-      "id": "2f2d0c5a-9f5f-4d7d-9e2c-1c8a5b8e3c21",
-      "title": "Test Note 1",
-      "note": "This is test note 1",
-      "created_at": "2026-01-19T14:12:09.123456+00:00",
-      "updated_at": "2026-01-19T14:12:09.123456+00:00"
-    }
-  ]
-}
-```
-
----
-
-### GET /notes/{id}
-
-**Purpose:**
-Retrieves a single note by ID.
-
-**Example Request:**
-```bash
-curl -s https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes/<id>
-```
-
----
-
-### PUT /notes/{id}
-
-**Purpose:**
-Updates an existing note.
-
-**Request Body (JSON):**
-```json
-{
-  "title": "Test Note 1",
-  "note": "Updated note"
-}
-```
-
----
-
-### DELETE /notes/{id}
-
-**Purpose:**
-Deletes a note by ID.
-
-**Example Request:**
-```bash
-curl -s -X DELETE https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes/<id>
+T=$(grep -m1 '^tenancy' ~/.oci/config | cut -d= -f2 | tr -d ' ')
+oci generative-ai model-collection list-models --compartment-id "$T" --output json \
+ | jq -r '.data.items[]
+          | select(.capabilities[]? == "CHAT")
+          | select(."time-on-demand-retired" == null)
+          | "\(.vendor)  \(."display-name")"' | sort -u
 ```
 
 ## Prerequisites
 
-* [An OCI (Oracle Cloud) Account](https://www.oracle.com/cloud/free/)
-* [Install and configure the OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm)
-* [Install Terraform](https://developer.hashicorp.com/terraform/install)
-* [Install Docker](https://docs.docker.com/get-docker/) — required to build and push the Functions image to OCIR
-* `jq` and `envsubst` — used by the automation scripts
-* Your OCI user must be able to **create identity domains** and administer them.
-  You do **not** need to create a domain by hand — `setup_domain.sh` builds and
-  configures it, and end users create their own logins via self-registration.
+- `oci`, `terraform`, `docker`, `jq`, `envsubst` in PATH
+- OCI CLI configured (`~/.oci/config`, API key)
+- Permission to **create identity domains** and **Identity Domain Administrator**
+  on the new domain — `setup_domain.sh` creates the domain and talks to its SCIM
+  API
+- OCI Generative AI available in your region (Ashburn is fine; `check_env.sh`
+  verifies the specific model)
 
-## Download this Repository
+No console clicks are required. `setup_domain.sh` builds the domain, enables the
+signing certificate so API Gateway can read the JWKS, and creates the
+self-registration profile. End users create their own logins.
 
-```bash
-git clone https://github.com/mamonaco1973/oci-identity-app.git
-cd oci-identity-app
-```
-
-## Build the Code
-
-Just run [apply](apply.sh). It validates your environment ([check_env](check_env.sh)),
-**bootstraps the identity domain** ([setup_domain.sh](setup_domain.sh)), then
-provisions the infrastructure — no manual OCI console setup required.
+## Deployment
 
 ```bash
-~/oci-crud-example$ ./apply.sh
-NOTE: Running environment validation...
-NOTE: Validating that required commands are found in your PATH.
-NOTE: oci is found in the current PATH.
-NOTE: terraform is found in the current PATH.
-NOTE: docker is found in the current PATH.
-NOTE: jq is found in the current PATH.
-NOTE: envsubst is found in the current PATH.
-NOTE: All required commands are available.
-NOTE: Checking OCI CLI connection.
-NOTE: Successfully connected to OCI.
-
-Initializing the backend...
+./apply.sh      # check_env → setup_domain → 01-ocir → 02-docker → 03-functions → 04-webapp
+./validate.sh   # asserts auth is enforced and the async tier is actually live
 ```
 
-`apply.sh` first runs `check_env.sh`, then **`setup_domain.sh`** to bootstrap the
-identity domain (see below). It then runs in phases: provisions the OCIR
-repository, **builds and pushes the Docker image** (`02-docker/build.sh`),
-applies the Functions + API Gateway + NoSQL layer, and finally uploads the web
-frontend to Object Storage.
+`apply.sh` reads the Phase 3 outputs, renders `04-webapp/js/config.js` from its
+template, and uploads the SPA.
 
-### Identity domain bootstrap (`setup_domain.sh`)
+`validate.sh` checks something the API surface cannot show you: that the queue
+and connector are both `ACTIVE`. Without a live connector, `POST /jobs` still
+returns 200 and the job row still appears — it simply never leaves `submitted`.
 
-Called automatically by `apply.sh` (and safe to run on its own). Idempotent — it
-does everything the login side needs, with **zero console clicks**:
+## Teardown
 
-1. Creates an **External User** identity domain (the tier that supports
-   self-registration) and waits for it to go active.
-2. Enables **Access Signing Certificate** so API Gateway can validate JWTs
-   (without it, every authenticated call fails with a 500).
-3. Creates and activates a **self-registration profile** so users can create
-   their own accounts.
-4. Writes `env.sh` (`OCI_DOMAIN_NAME`, `OCI_SIGNUP_PROFILE_NAME`), which the
-   scripts source automatically. Override the domain/profile names with those
-   env vars if you like (defaults `notes-app` / `spa-signup`).
+```bash
+./destroy.sh          # 1. purge the backend bucket, remove Terraform resources
+./delete_domain.sh    # 2. deactivate + delete the domain, remove env.sh
+```
 
-To undo all of this, run [`delete_domain.sh`](delete_domain.sh) — it deactivates
-and deletes the domain (which also drops the self-registration profile) and
-removes `env.sh`. Run it after `destroy.sh`.
+Run them in that order. `destroy.sh` empties the backend bucket first — the
+functions fill it at runtime with objects Terraform knows nothing about, and
+Object Storage refuses to delete a non-empty bucket.
 
-### Build Results
+External User domains bill per monthly active user, so run `delete_domain.sh`
+when you are finished with the demo.
 
-When the deployment completes, the following resources are created:
+## Notes and gotchas
 
-- **Core Infrastructure:**
-  - Serverless compute—no VM instances to manage
-  - A minimal VCN (subnet + gateway) so Functions have egress to OCIR and NoSQL
-  - Terraform-managed provisioning of API Gateway, Functions, NoSQL, OCIR, and
-    Object Storage resources
-  - Stateless, request-driven design where each API call is handled independently
+- **Resource Principal propagation.** A Function container caches its dynamic
+  group membership at boot. A container that started before the DG or its
+  policies propagated keeps a groupless token and returns 404
+  `NotAuthorizedOrNotFound` for its entire life, while one started later works.
+  The OCI SDK treats that 404 as *transient* and retries it, so the first calls
+  hang for the full function timeout and later ones fail instantly once the
+  circuit breaker opens — one fault presenting as two different bugs. Recycle
+  the container rather than editing the policy.
+- **The SPA is not served from a domain root.** Object Storage hosts it under
+  `/n/<namespace>/b/<bucket>/o/`, so `window.location.origin` silently drops the
+  path. Every browser-side URL derives from `CONFIG.WEB_BASE_URL`, and asset
+  references are relative.
+- **HTTPS is required**, not merely advisable: PKCE uses `crypto.subtle`, which
+  is undefined outside a secure context.
+- **Identity Domains rotates refresh tokens**, unlike Cognito, so the new one has
+  to be stored or the next refresh fails.
+- **Editing a resume does not rescore past jobs.** Each job snapshots the resume
+  text it was scored against, so historical scores stay reproducible.
 
-- **Security & IAM:**
-  - A Dynamic Group + IAM policies grant the Functions row access to NoSQL and
-    let API Gateway invoke the Functions
-  - Functions authenticate with a **Resource Principal**—no keys or secrets in
-    application code
-  - Principle-of-least-privilege policies scoped to the compartment
+## Licensing
 
-- **OCI NoSQL Database:**
-  - Single table storing notes keyed by `owner` (shard key) and `id` (sort key)
-  - Each row stores `title`, `note`, `created_at`, and `updated_at` attributes
-  - On-demand capacity for automatic scaling and cost efficiency
-
-- **OCI Functions (container-based):**
-  - Five Python Functions implementing Create, Read, Update, List, and Delete
-  - **One Docker image** in OCIR serves all five; the `FUNCTION_TYPE` environment
-    variable dispatches each Function to the right handler
-  - Each Function is mapped to a specific API route and emits logs to OCI Logging
-
-- **OCIR (Container Registry):**
-  - Holds the notes-functions image; a content-hash tag forces a Function update
-    whenever the code changes
-  - The Functions pull the image on invoke—the OCI-specific "no code upload" step
-
-- **OCI IAM Identity Domains (auth):**
-  - An **External User** domain with self-registration, created and configured by
-    `setup_domain.sh` (not Terraform)
-  - A public SPA app (Authorization Code + PKCE, no secret) registered by
-    Terraform (`03-functions/identity.tf`)
-  - Users log in — or create their own account — via the hosted OCI login
-
-- **OCI API Gateway:**
-  - Exposes REST-style `/notes` and `/notes/{id}` endpoints
-  - **Validates the caller's JWT** against the domain JWKS before invoking any
-    Function; every route requires authentication
-  - Injects `{id}` as the `X-Note-Id` header for path-parameter routes
-
-- **Static Web Application (Object Storage):**
-  - Public bucket configured for static website hosting
-  - `index.html` provides a browser-based interface with a **Sign In / Create
-    Account** chooser and PKCE login
-  - Frontend calls the deployed API Gateway endpoints with the user's token
-
-- **Automation & Validation:**
-  - `apply.sh`, `destroy.sh`, and `check_env.sh` scripts automate provisioning,
-    teardown, and environment validation
-  - `delete_domain.sh` is the inverse of `setup_domain.sh` — it deactivates and
-    deletes the identity domain (Terraform can't) and removes `env.sh`. Run it
-    **after** `destroy.sh` to fully tear the demo down
-  - `validate.sh` performs end-to-end API verification using curl and jq
-  - Entire workflow runs using Terraform and the OCI CLI—no manual OCI console
-    setup required
-
-Together, these resources form a **clean, minimal serverless CRUD application**
-that demonstrates modern OCI API design principles—simple, scalable, and fully
-managed from infrastructure to application code.
+The application code in this repository is provided as a reference
+implementation. OCI Generative AI usage is billed per token; the per-user
+lifetime cap in `users.py` exists so a public demo cannot run away with it.

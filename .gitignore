@@ -6,8 +6,13 @@
 *.pem
 *.pub
 *.zip
-index.html
-config.json
+
+# Generated at deploy time from js/config.js.tmpl by apply.sh — never edit or
+# commit the rendered file; the template is the source of truth.
+04-webapp/js/config.js
+
+# Redirected CLI output — never belongs in the repo
+out.log
 
 # Local environment overrides (OCI_DOMAIN_NAME, OCI_SIGNUP_PROFILE_NAME, etc.)
 env.sh

@@ -3,12 +3,13 @@
 # File: apply.sh
 #
 # Purpose:
-#   Orchestrates end-to-end deployment of the Notes CRUD application on OCI.
+#   Orchestrates end-to-end deployment of the resume scoring application on OCI.
 #
-#   Phase 1 (01-ocir):    Creates the OCIR container repository
-#   Phase 2 (02-docker):  Builds the Docker image and pushes it to OCIR
-#   Phase 3 (03-functions): Deploys Functions, NoSQL, VCN, IAM, API Gateway
-#   Phase 4 (04-webapp):  Injects API URL into HTML and deploys to Object Storage
+#   Phase 1 (01-ocir):      Creates the OCIR container repository
+#   Phase 2 (02-docker):    Builds the Docker image and pushes it to OCIR
+#   Phase 3 (03-functions): Deploys Functions, NoSQL, Queue, Connector Hub,
+#                           VCN, IAM, buckets and API Gateway
+#   Phase 4 (04-webapp):    Renders js/config.js and uploads the SPA
 #
 # No environment variables are required.  Everything is derived automatically
 # from ~/.oci/config and the OCI CLI.  An OCIR auth token is created on the
@@ -19,6 +20,9 @@
 # ================================================================================
 
 set -euo pipefail
+
+# Model selection — keeps apply/destroy/check_env and Terraform in agreement.
+source ./genai-config.sh
 
 # Load local, uncommitted overrides (OCI_DOMAIN_NAME, OCI_SIGNUP_PROFILE_NAME,
 # OCI_COMPARTMENT_ID, etc.) if an env.sh is present. Gitignored.
@@ -90,7 +94,7 @@ else
   echo "NOTE: No cached OCIR token found — creating one via OCI CLI..."
   OCIR_TOKEN=$(oci iam auth-token create \
     --user-id "${USER_OCID}" \
-    --description "notes-crud-ocir" \
+    --description "resume-app-ocir" \
     --query 'data.token' \
     --raw-output)
 
@@ -109,6 +113,10 @@ export TF_VAR_region="$REGION"
 # then point at it here.  REQUIRED — check_env.sh (run above) fails if unset.
 export TF_VAR_domain_display_name="${OCI_DOMAIN_NAME}"
 echo "NOTE: Identity domain - ${TF_VAR_domain_display_name}"
+
+# Generative AI model the worker scores with (see genai-config.sh).
+export TF_VAR_genai_model_id="${GENAI_MODEL_ID}"
+echo "NOTE: Gen AI model    - ${TF_VAR_genai_model_id}"
 
 # Export OCIR vars for 02-docker/build.sh.
 export OCIR_HOST OCIR_TOKEN OCIR_USERNAME NAMESPACE
@@ -172,15 +180,9 @@ echo "NOTE: [Phase 4/4] Deploying static web application..."
 
 cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
 
-export API_BASE
-envsubst '${API_BASE}' < index.html.tmpl > index.html || {
-  echo "ERROR: Failed to generate index.html"
-  exit 1
-}
-
-# SPA runtime config consumed by index.html + callback.html. Not committed
-# (see .gitignore) — regenerated on every apply.
-echo "NOTE: Writing config.json..."
+# SPA runtime config consumed by every ES module. Not committed (see
+# .gitignore) — regenerated on every apply.
+echo "NOTE: Writing js/config.js..."
 # Self-registration profile — looked up by NAME (created once in the console),
 # so no profile ID has to be hard-coded or exported. apply.sh resolves its ID
 # from the domain. When found, the SPA sign-in chooser shows a "Create Account"
@@ -205,15 +207,30 @@ else
   echo "NOTE: Self-registration profile id - ${SIGNUP_PROFILE_ID}"
 fi
 
-cat > config.json <<EOF
-{
-  "domainUrl": "${DOMAIN_URL}",
-  "clientId": "${SPA_CLIENT_ID}",
-  "redirectUri": "${REDIRECT_URI}",
-  "apiBaseUrl": "${API_BASE}",
-  "signupProfileId": "${SIGNUP_PROFILE_ID}"
+# Self-registration lands on the domain's hosted signup form. Empty when the
+# profile was not found, which makes the SPA hide the Create Account button
+# rather than link somewhere broken.
+SIGNUP_URL=""
+if [ -n "${SIGNUP_PROFILE_ID}" ]; then
+  SIGNUP_URL="${DOMAIN_URL%/}/ui/v1/signup?profileid=${SIGNUP_PROFILE_ID}"
+fi
+
+# WEB_BASE_URL is the directory the SPA is served from, not an origin: Object
+# Storage hosts it under /n/<ns>/b/<bucket>/o/, so every browser-side URL has to
+# be built from this rather than window.location.origin.
+WEB_BASE_URL="${WEBSITE_URL%/index.html}"
+
+export API_BASE_URL="${API_BASE}"
+export DOMAIN_URL CLIENT_ID="${SPA_CLIENT_ID}" WEB_BASE_URL SIGNUP_URL
+
+envsubst '${API_BASE_URL} ${DOMAIN_URL} ${CLIENT_ID} ${WEB_BASE_URL} ${SIGNUP_URL}' \
+  < js/config.js.tmpl > js/config.js || {
+  echo "ERROR: Failed to generate js/config.js"
+  exit 1
 }
-EOF
+
+echo "NOTE: Web base URL         - ${WEB_BASE_URL}"
+echo "NOTE: OAuth redirect URI   - ${REDIRECT_URI}"
 
 terraform init
 terraform apply -auto-approve -var="web_bucket_name=${WEB_BUCKET}"

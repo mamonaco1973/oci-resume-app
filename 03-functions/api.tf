@@ -1,61 +1,70 @@
 # ================================================================================
 # OCI API Gateway (JWT-authenticated)
 # ================================================================================
-# Creates a public API Gateway and a deployment with five routes that map
-# HTTP methods + paths to the corresponding OCI Functions.
+# One gateway, one deployment, twenty routes — all of them backed by the single
+# `api` Function, which dispatches internally exactly as the AWS API Lambda does.
 #
-# Routes:
-#   POST   /notes        → create-note
-#   GET    /notes        → list-notes
-#   GET    /notes/{id}   → get-note
-#   PUT    /notes/{id}   → update-note
-#   DELETE /notes/{id}   → delete-note
-#
-# Authentication (the difference from oci-crud-example):
-#   A deployment-level authentication policy validates the JWT the SPA sends in
-#   the Authorization header against the identity domain's JWKS.  Every route
-#   opts in with an AUTHENTICATION_ONLY authorization policy, so unauthenticated
-#   calls are rejected at the gateway before any function runs.
+# Authentication:
+#   A deployment-level policy validates the SPA's JWT against the identity
+#   domain's JWKS.  Every route opts in with AUTHENTICATION_ONLY, so
+#   unauthenticated calls are rejected at the gateway before any function runs.
+#   /register is authenticated too — it runs after sign-in to create the user's
+#   usage record and needs the caller's identity to know whose record to make.
 #
 # Per-user isolation:
-#   The gateway forwards the (now-verified) Authorization header to the function,
-#   which decodes the token's `sub` claim and uses it as the NoSQL shard key, so
-#   each user only ever sees their own notes.  We deliberately do NOT inject
-#   ${request.auth[sub]} as a header — that expression fails to resolve under
-#   JWT_AUTHENTICATION and 500s the request before it reaches the function.
+#   The gateway forwards the validated Authorization header; the function
+#   decodes the `sub` claim and uses it as the NoSQL shard key.  We deliberately
+#   do NOT inject ${request.auth[sub]} as a header — that expression fails to
+#   resolve under JWT_AUTHENTICATION and 500s the request before it reaches the
+#   function.
 #
-# Path parameters:
-#   For routes containing {id}, a header transformation injects
-#   ${request.path[id]} as X-Note-Id (a proven expression).
+# ------------------------------------------------------------------------------
+# Why every route injects X-Route
+# ------------------------------------------------------------------------------
+# The AWS Lambda dispatches on event["rawPath"] and the HTTP method, both of
+# which API Gateway hands it directly.  The OCI FDK has no equivalent guarantee:
+# ctx.RequestURL() reflects the backend invoke URL, not the matched route
+# template, so reconstructing "/jobs/{job_id}/notes" from it is guesswork that
+# breaks the moment the gateway path rewriting changes.
+#
+# Instead the gateway — which already knows exactly which route matched — states
+# it explicitly in an X-Route header, and func.py dispatches on that string.
+# The routing authority stays in one place, the function never parses a URL, and
+# a mismatch shows up as an obvious unknown-route 404 instead of a subtle
+# mis-dispatch.  Path parameters ride along the same way, using the proven
+# ${request.path[...]} expression.
 # ================================================================================
 
 # --------------------------------------------------------------------------------
 # API Gateway — public endpoint in the shared subnet
 # --------------------------------------------------------------------------------
-resource "oci_apigateway_gateway" "notes" {
+resource "oci_apigateway_gateway" "resume" {
   compartment_id = var.compartment_id
-  display_name   = "notes-gateway"
+  display_name   = "resume-gateway"
   endpoint_type  = "PUBLIC"
   subnet_id      = oci_core_subnet.public.id
 }
 
 # --------------------------------------------------------------------------------
-# API Deployment — auth policy, routes, CORS, and function backends
+# API Deployment — auth policy, routes, CORS, and the single function backend
 # --------------------------------------------------------------------------------
-resource "oci_apigateway_deployment" "notes" {
+resource "oci_apigateway_deployment" "resume" {
   compartment_id = var.compartment_id
-  display_name   = "notes-api"
-  gateway_id     = oci_apigateway_gateway.notes.id
+  display_name   = "resume-api"
+  gateway_id     = oci_apigateway_gateway.resume.id
   path_prefix    = "/"
 
   specification {
 
     request_policies {
 
-      # CORS — applies to all routes; gateway handles OPTIONS preflight itself.
+      # CORS — applies to all routes; the gateway answers OPTIONS preflight
+      # itself.  PATCH is required by /jobs/{id}/notes and /jobs/{id}/folder;
+      # omitting it fails those two routes at preflight only, which reads like a
+      # broken endpoint rather than a CORS problem.
       cors {
         allowed_origins              = ["*"]
-        allowed_methods              = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        allowed_methods              = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
         allowed_headers              = ["Content-Type", "content-type", "Authorization", "authorization"]
         exposed_headers              = ["Content-Type"]
         is_allow_credentials_enabled = false
@@ -66,12 +75,12 @@ resource "oci_apigateway_deployment" "notes" {
       # JWT authentication — validates the SPA's ID token against the domain JWKS
       # --------------------------------------------------------------------------
       # VERIFY BEFORE SHIP: `issuers` and `audiences` are config-dependent.
-      #   issuers  — decode a real token; Identity Domains usually emits
-      #              "https://identity.oraclecloud.com/" (trailing slash), but a
-      #              domain-specific issuer can be enabled. Match it exactly.
-      #   audiences — set to the app client_id because the SPA sends the ID token
-      #              (aud = client_id). If you switch to access tokens + a custom
-      #              API scope, change this to that scope's primary audience.
+      #   issuers   — decode a real token; Identity Domains usually emits
+      #               "https://identity.oraclecloud.com/" (trailing slash), but a
+      #               domain-specific issuer can be enabled. Match it exactly.
+      #   audiences — the app client_id, because the SPA sends the ID token
+      #               (aud = client_id). Switching to access tokens + a custom
+      #               API scope means changing this to that scope's audience.
       # --------------------------------------------------------------------------
       authentication {
         type                        = "JWT_AUTHENTICATION"
@@ -91,67 +100,24 @@ resource "oci_apigateway_deployment" "notes" {
       }
     }
 
-    # ------------------------------------------------------------------
-    # POST /notes — create a new note
-    # ------------------------------------------------------------------
+    # ============================================================================
+    # User — registration and token usage
+    # ============================================================================
+
     routes {
-      path    = "/notes"
+      path    = "/register"
       methods = ["POST"]
-
       backend {
         type        = "ORACLE_FUNCTIONS_BACKEND"
-        function_id = oci_functions_function.create_note.id
+        function_id = oci_functions_function.api.id
       }
-
       request_policies {
-        authorization {
-          type = "AUTHENTICATION_ONLY"
-        }
-      }
-    }
-
-    # ------------------------------------------------------------------
-    # GET /notes — list the caller's notes
-    # ------------------------------------------------------------------
-    routes {
-      path    = "/notes"
-      methods = ["GET"]
-
-      backend {
-        type        = "ORACLE_FUNCTIONS_BACKEND"
-        function_id = oci_functions_function.list_notes.id
-      }
-
-      request_policies {
-        authorization {
-          type = "AUTHENTICATION_ONLY"
-        }
-      }
-    }
-
-    # ------------------------------------------------------------------
-    # GET /notes/{id} — retrieve a single note
-    # ------------------------------------------------------------------
-    # Injects X-Note-Id (path param); owner comes from the forwarded token.
-    # ------------------------------------------------------------------
-    routes {
-      path    = "/notes/{id}"
-      methods = ["GET"]
-
-      backend {
-        type        = "ORACLE_FUNCTIONS_BACKEND"
-        function_id = oci_functions_function.get_note.id
-      }
-
-      request_policies {
-        authorization {
-          type = "AUTHENTICATION_ONLY"
-        }
+        authorization { type = "AUTHENTICATION_ONLY" }
         header_transformations {
           set_headers {
             items {
-              name      = "X-Note-Id"
-              values    = ["$${request.path[id]}"]
+              name      = "X-Route"
+              values    = ["register"]
               if_exists = "OVERWRITE"
             }
           }
@@ -159,27 +125,20 @@ resource "oci_apigateway_deployment" "notes" {
       }
     }
 
-    # ------------------------------------------------------------------
-    # PUT /notes/{id} — update an existing note
-    # ------------------------------------------------------------------
     routes {
-      path    = "/notes/{id}"
-      methods = ["PUT"]
-
+      path    = "/usage"
+      methods = ["GET"]
       backend {
         type        = "ORACLE_FUNCTIONS_BACKEND"
-        function_id = oci_functions_function.update_note.id
+        function_id = oci_functions_function.api.id
       }
-
       request_policies {
-        authorization {
-          type = "AUTHENTICATION_ONLY"
-        }
+        authorization { type = "AUTHENTICATION_ONLY" }
         header_transformations {
           set_headers {
             items {
-              name      = "X-Note-Id"
-              values    = ["$${request.path[id]}"]
+              name      = "X-Route"
+              values    = ["usage"]
               if_exists = "OVERWRITE"
             }
           }
@@ -187,27 +146,465 @@ resource "oci_apigateway_deployment" "notes" {
       }
     }
 
-    # ------------------------------------------------------------------
-    # DELETE /notes/{id} — delete a note
-    # ------------------------------------------------------------------
+    # ============================================================================
+    # Folders
+    # ============================================================================
+
     routes {
-      path    = "/notes/{id}"
+      path    = "/folders"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["folders.list"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/folders"
+      methods = ["POST"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["folders.create"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/folders/{folder_id}"
       methods = ["DELETE"]
-
       backend {
         type        = "ORACLE_FUNCTIONS_BACKEND"
-        function_id = oci_functions_function.delete_note.id
+        function_id = oci_functions_function.api.id
       }
-
       request_policies {
-        authorization {
-          type = "AUTHENTICATION_ONLY"
-        }
+        authorization { type = "AUTHENTICATION_ONLY" }
         header_transformations {
           set_headers {
             items {
-              name      = "X-Note-Id"
-              values    = ["$${request.path[id]}"]
+              name      = "X-Route"
+              values    = ["folders.delete"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Folder-Id"
+              values    = ["$${request.path[folder_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    # ============================================================================
+    # Attachments — declared before /jobs/{job_id} so the more specific paths
+    # are unambiguous; the AWS router has the same ordering requirement.
+    # ============================================================================
+
+    routes {
+      path    = "/jobs/{job_id}/attachments"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["attachments.list"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}/attachments"
+      methods = ["POST"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["attachments.upload"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    # Two path parameters on one route — the case with no AWS analogue to copy.
+    routes {
+      path    = "/jobs/{job_id}/attachments/{attachment_id}"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["attachments.download"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Attachment-Id"
+              values    = ["$${request.path[attachment_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}/attachments/{attachment_id}"
+      methods = ["DELETE"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["attachments.delete"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Attachment-Id"
+              values    = ["$${request.path[attachment_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    # ============================================================================
+    # Jobs
+    # ============================================================================
+
+    routes {
+      path    = "/jobs"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.list"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs"
+      methods = ["POST"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.create"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}/notes"
+      methods = ["PATCH"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.notes"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}/folder"
+      methods = ["PATCH"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.folder"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.get"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/jobs/{job_id}"
+      methods = ["DELETE"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["jobs.delete"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Job-Id"
+              values    = ["$${request.path[job_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    # ============================================================================
+    # Resumes
+    # ============================================================================
+
+    routes {
+      path    = "/resumes"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["resumes.list"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/resumes"
+      methods = ["POST"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["resumes.create"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/resumes/{resume_id}"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["resumes.get"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Resume-Id"
+              values    = ["$${request.path[resume_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/resumes/{resume_id}"
+      methods = ["PUT"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["resumes.update"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Resume-Id"
+              values    = ["$${request.path[resume_id]}"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
+    routes {
+      path    = "/resumes/{resume_id}"
+      methods = ["DELETE"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["resumes.delete"]
+              if_exists = "OVERWRITE"
+            }
+            items {
+              name      = "X-Resume-Id"
+              values    = ["$${request.path[resume_id]}"]
               if_exists = "OVERWRITE"
             }
           }

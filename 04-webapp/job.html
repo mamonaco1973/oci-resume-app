@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Job Details</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+
+  <header class="app-header">
+    <h1>Job Details</h1>
+  </header>
+
+  <main class="job-detail-page">
+
+    <div id="job-detail-error" class="field-error hidden"></div>
+
+    <section id="job-detail-loading">
+      <p>Loading job details...</p>
+    </section>
+
+    <section id="job-detail-content" class="hidden">
+
+      <!-- ==================================================================== -->
+      <!-- General Information -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section" open>
+        <summary>General Information</summary>
+
+        <div class="accordion-body">
+
+          <div class="detail-grid">
+
+            <div class="detail-row">
+              <div class="detail-label">Job Title</div>
+              <div id="job-title" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Company</div>
+              <div id="job-company" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Score</div>
+              <div id="job-score" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Scored Date</div>
+              <div id="job-scored-at" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+                <div class="detail-label">Status</div>
+                <div id="job-status" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+                <div class="detail-label">Status Message</div>
+                <div id="job-status-message" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Source Type</div>
+              <div id="job-source-type" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Job URL</div>
+              <div id="job-url" class="detail-value">—</div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-label">Folder</div>
+              <div id="job-folder" class="detail-value">—</div>
+            </div>
+
+          </div>
+
+        </div>
+      </details>
+
+      <!-- ==================================================================== -->
+      <!-- Attachments -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section">
+        <summary>Attachments</summary>
+
+        <div class="accordion-body">
+
+          <div class="attachment-upload-bar">
+            <input type="file" id="attachment-file-input" style="display:none"
+              accept=".pdf,.doc,.docx,.txt,.rtf,.png,.jpg,.jpeg,.gif,.zip,.csv,.xls,.xlsx">
+            <button type="button" id="btn-upload-attachment">Upload File</button>
+            <span id="attachment-upload-status" class="field-success hidden"></span>
+            <span id="attachment-upload-error"  class="field-error  hidden"></span>
+          </div>
+
+          <div id="attachment-list"></div>
+
+        </div>
+
+      </details>
+
+      <!-- ==================================================================== -->
+      <!-- Analysis -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section" open>
+        <summary>Analysis</summary>
+
+        <div class="accordion-body">
+          <div id="job-analysis" class="detail-text-block">—</div>
+        </div>
+
+      </details>
+
+      <!-- ==================================================================== -->
+      <!-- Job Description -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section"  open>
+        <summary>Job Description</summary>
+
+        <div class="accordion-body">
+          <div id="job-description" class="detail-text-block">—</div>
+        </div>
+
+      </details>
+
+      <!-- ==================================================================== -->
+      <!-- Resume Snapshot -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section">
+        <summary>Resume</summary>
+
+        <div class="accordion-body">
+          <div id="job-resume" class="detail-text-block">—</div>
+        </div>
+
+      </details>
+
+      <!-- ==================================================================== -->
+      <!-- Notes -->
+      <!-- ==================================================================== -->
+
+      <details class="accordion-section">
+        <summary>Notes</summary>
+
+        <div class="accordion-body">
+
+          <div class="form-group">
+            <textarea
+              id="job-notes"
+              class="form-control"
+              rows="10"
+              placeholder="Add notes about this job..."
+            ></textarea>
+          </div>
+
+          <div id="job-notes-error" class="field-error hidden"></div>
+          <div id="job-notes-success" class="field-success hidden"></div>
+
+          <div class="form-actions">
+            <button id="update-job-notes-btn" type="button">
+              Update Notes
+            </button>
+          </div>
+
+        </div>
+
+      </details>
+
+    </section>
+
+  </main>
+
+  <script type="module" src="js/job.js"></script>
+
+</body>
+</html>

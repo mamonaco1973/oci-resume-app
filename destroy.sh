@@ -3,7 +3,7 @@
 # File: destroy.sh
 #
 # Purpose:
-#   Tears down the Notes application stack deployed by apply.sh.
+#   Tears down the resume scoring application stack deployed by apply.sh.
 #   Destroys resources in reverse phase order:
 #
 #   Phase 4 (04-webapp):   Destroy Object Storage bucket and objects
@@ -43,7 +43,7 @@ export TF_VAR_region="$REGION"
 # or destroy could target the wrong domain's app.
 if [ -z "${OCI_DOMAIN_NAME:-}" ]; then
   echo "ERROR: OCI_DOMAIN_NAME is not set — export the domain you deployed into, e.g.:"
-  echo "ERROR:   export OCI_DOMAIN_NAME=notes-app"
+  echo "ERROR:   export OCI_DOMAIN_NAME=resume-app"
   exit 1
 fi
 export TF_VAR_domain_display_name="${OCI_DOMAIN_NAME}"
@@ -68,7 +68,34 @@ cd ..
 # Phase 3: Destroy Functions, NoSQL, and API Gateway
 # ------------------------------------------------------------------------------
 
-echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, and API Gateway..."
+echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, Queue, and API Gateway..."
+
+# ------------------------------------------------------------------------------
+# Empty the backend bucket before Terraform touches it
+# ------------------------------------------------------------------------------
+# Object Storage refuses to delete a bucket that still contains objects, and the
+# backend bucket is filled at RUNTIME by the functions — resume text, per-job
+# snapshots, scraped descriptions, analyses and attachment bytes. None of it is
+# in Terraform state, so `terraform destroy` would fail on the bucket with a
+# BucketNotEmpty that looks unrelated to anything the user did.
+#
+# The web bucket does not need this: every object in it is managed by the
+# 04-webapp state and was already removed above.
+# ------------------------------------------------------------------------------
+
+BACKEND_BUCKET=$(cd 03-functions && terraform output -raw backend_bucket_name 2>/dev/null || echo "")
+OS_NAMESPACE=$(cd 03-functions && terraform output -raw os_namespace 2>/dev/null || echo "")
+
+if [[ -n "${BACKEND_BUCKET}" && -n "${OS_NAMESPACE}" ]]; then
+  echo "NOTE: Emptying backend bucket ${BACKEND_BUCKET}..."
+  oci os object bulk-delete \
+    --namespace "${OS_NAMESPACE}" \
+    --bucket-name "${BACKEND_BUCKET}" \
+    --force 2>/dev/null \
+    || echo "NOTE: Bucket already empty or unreachable — continuing."
+else
+  echo "NOTE: Backend bucket name unavailable — skipping purge."
+fi
 
 # ------------------------------------------------------------------------------
 # Deactivate the Identity Domains app before destroy
@@ -76,7 +103,7 @@ echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, and API Gateway..."
 # Identity Domains rejects DeleteApp on an ACTIVE app with a generic 400, so
 # terraform destroy fails on oci_identity_domains_app.  Flip it inactive first
 # via the domain SCIM API (AppStatusChanger).  Best-effort: if this fails,
-# deactivate "notes-spa" in the console, then re-run destroy.
+# deactivate "resume-spa" in the console, then re-run destroy.
 # ------------------------------------------------------------------------------
 APP_ID=$(cd 03-functions && terraform output -raw spa_app_id 2>/dev/null || echo "")
 DOMAIN_URL=$(cd 03-functions && terraform output -raw identity_domain_url 2>/dev/null || echo "")
@@ -89,7 +116,7 @@ if [[ -n "${APP_ID}" && -n "${DOMAIN_URL}" ]]; then
     --active false \
     --schemas '["urn:ietf:params:scim:schemas:oracle:idcs:AppStatusChanger"]' \
     --force 2>/dev/null \
-    || echo "NOTE: CLI deactivate failed — if destroy errors, deactivate 'notes-spa' in the console."
+    || echo "NOTE: CLI deactivate failed — if destroy errors, deactivate 'resume-spa' in the console."
 fi
 
 cd 03-functions || { echo "ERROR: 03-functions directory missing."; exit 1; }
@@ -107,7 +134,7 @@ cd ..
 # the repository in Phase 1.
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Purging OCIR images from notes-functions repository..."
+echo "NOTE: Purging OCIR images from resume-functions repository..."
 
 IMAGE_IDS=$(oci artifacts container image list \
   --compartment-id "${OCI_COMPARTMENT_ID}" \
@@ -154,7 +181,7 @@ TOKEN_FILE="${HOME}/.oci/ocir_token"
 
 TOKEN_ID=$(oci iam auth-token list \
   --user-id "${USER_OCID}" \
-  --query "data[?description=='notes-crud-ocir'].id | [0]" \
+  --query "data[?description=='resume-app-ocir'].id | [0]" \
   --raw-output 2>/dev/null || echo "")
 
 if [[ -n "${TOKEN_ID}" && "${TOKEN_ID}" != "null" ]]; then
@@ -164,7 +191,7 @@ if [[ -n "${TOKEN_ID}" && "${TOKEN_ID}" != "null" ]]; then
     --force
   echo "NOTE: OCIR auth token deleted."
 else
-  echo "NOTE: No notes-crud-ocir auth token found — skipping."
+  echo "NOTE: No resume-app-ocir auth token found — skipping."
 fi
 
 rm -f "${TOKEN_FILE}"

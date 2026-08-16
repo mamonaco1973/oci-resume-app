@@ -2,7 +2,7 @@
 # ==============================================================================
 # File: setup_domain.sh
 #
-# One-time bootstrap for the identity domain that backs the Notes SPA.  Terraform
+# One-time bootstrap for the identity domain that backs the resume app SPA.  Terraform
 # can't cleanly create/destroy identity domains, so this lives OUTSIDE apply.sh /
 # destroy.sh and is run by hand once.  It is idempotent — re-running is safe.
 #
@@ -16,7 +16,7 @@
 #   4. Write env.sh so ./apply.sh targets this domain automatically.
 #
 # Overridable via env vars (or a pre-existing env.sh):
-#   OCI_DOMAIN_NAME          domain display name          (default: notes-app)
+#   OCI_DOMAIN_NAME          domain display name          (default: resume-app)
 #   OCI_SIGNUP_PROFILE_NAME  self-registration profile    (default: spa-signup)
 #   OCI_LICENSE_TYPE         domain license type          (default: external-user)
 #   OCI_COMPARTMENT_ID       target compartment           (default: tenancy root)
@@ -29,7 +29,7 @@ set -euo pipefail
 # Allow a pre-existing env.sh to preseed the names (gitignored).
 if [ -f env.sh ]; then source env.sh; fi
 
-DOMAIN_NAME="${OCI_DOMAIN_NAME:-notes-app}"
+DOMAIN_NAME="${OCI_DOMAIN_NAME:-resume-app}"
 PROFILE_NAME="${OCI_SIGNUP_PROFILE_NAME:-spa-signup}"
 LICENSE_TYPE="${OCI_LICENSE_TYPE:-external-user}"
 SIGNUP_LINK_TEXT="Create an account"
@@ -85,7 +85,7 @@ else
   oci iam domain create \
     --compartment-id "${COMPARTMENT_ID}" \
     --display-name "${DOMAIN_NAME}" \
-    --description "Self-service registration domain for the Notes SPA" \
+    --description "Self-service registration domain for the resume app SPA" \
     --home-region "${REGION}" \
     --license-type "${LICENSE_TYPE}" \
     --wait-for-state SUCCEEDED \

@@ -3,13 +3,15 @@
 # File: validate.sh
 # ================================================================================
 # Purpose:
-#   Post-deploy check for the JWT-authenticated Notes API.  Unlike the
-#   unauthenticated oci-crud-example, the CRUD endpoints now require a valid
-#   Identity Domains token, so an end-to-end curl loop would need an interactive
-#   browser login.  Instead this script:
-#     1. Confirms the API rejects an UNauthenticated request (proves the JWT
+#   Post-deploy check for the JWT-authenticated resume scoring API. Every route
+#   requires a valid Identity Domains token, so an end-to-end curl loop would
+#   need an interactive browser login. Instead this script:
+#     1. Confirms the API rejects UNauthenticated requests (proves the JWT
 #        authenticator is wired up and enforcing).
-#     2. Prints the web app URL and manual test instructions.
+#     2. Confirms the async tier exists — queue plus connector — because a
+#        missing connector is invisible from the API surface: jobs submit fine
+#        and simply never leave "submitted".
+#     3. Prints the web app URL and manual test instructions.
 #
 # Requirements: oci CLI configured, curl, jq, 03-functions/04-webapp TF state.
 # ================================================================================
@@ -22,26 +24,90 @@ set -euo pipefail
 echo "NOTE: Locating API Gateway endpoint..."
 API_BASE=$(cd 03-functions && terraform output -raw api_gateway_endpoint)
 WEBAPP_URL=$(cd 04-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
+QUEUE_ID=$(cd 03-functions && terraform output -raw queue_id 2>/dev/null || echo "")
+GENAI_MODEL=$(cd 03-functions && terraform output -raw genai_model_id 2>/dev/null || echo "unknown")
 
 echo "NOTE: API Gateway URL - ${API_BASE}"
 
 # ------------------------------------------------------------------------------
-# Negative test — an unauthenticated call MUST be rejected by the gateway
+# Negative test — unauthenticated calls MUST be rejected by the gateway
 # ------------------------------------------------------------------------------
 # The gateway validates the JWT before the function runs, so no token → 401
-# (some configurations return 403).  Either proves auth is enforced; a 2xx here
+# (some configurations return 403). Either proves auth is enforced; a 2xx here
 # would mean the routes are open and the deploy is broken.
+#
+# Two paths are probed rather than one: a collection route and a path-parameter
+# route. They are configured differently — the second carries header
+# transformations — so a mistake that only affects the parameterised routes
+# would slip past a single-path check.
 # ------------------------------------------------------------------------------
 echo "NOTE: Verifying unauthenticated requests are rejected..."
 
-STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_BASE}/notes")
+for path in "/jobs" "/resumes/00000000-0000-0000-0000-000000000000"; do
+  STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_BASE}${path}")
 
-if [[ "${STATUS}" == "401" || "${STATUS}" == "403" ]]; then
-  echo "NOTE: Unauthenticated GET /notes correctly rejected (HTTP ${STATUS})."
+  if [[ "${STATUS}" == "401" || "${STATUS}" == "403" ]]; then
+    echo "NOTE: Unauthenticated GET ${path} correctly rejected (HTTP ${STATUS})."
+  else
+    echo "ERROR: Expected 401/403 without a token on ${path}, got HTTP ${STATUS}."
+    echo "ERROR: The JWT authenticator may not be enforcing — check api.tf."
+    exit 1
+  fi
+done
+
+# ------------------------------------------------------------------------------
+# CORS preflight — PATCH must be allowed
+# ------------------------------------------------------------------------------
+# /jobs/{id}/notes and /jobs/{id}/folder are the only PATCH routes. If PATCH is
+# missing from the deployment's allowed_methods the browser blocks those two
+# calls at preflight and nothing else looks wrong, so it is worth asserting.
+# ------------------------------------------------------------------------------
+echo "NOTE: Verifying CORS preflight allows PATCH..."
+
+ALLOWED=$(curl -s -o /dev/null -D - -X OPTIONS \
+  -H "Origin: https://example.com" \
+  -H "Access-Control-Request-Method: PATCH" \
+  "${API_BASE}/jobs/test/notes" 2>/dev/null \
+  | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-methods"{print $2}')
+
+if [[ "${ALLOWED}" == *"PATCH"* ]]; then
+  echo "NOTE: CORS preflight advertises PATCH."
 else
-  echo "ERROR: Expected 401/403 without a token, got HTTP ${STATUS}."
-  echo "ERROR: The JWT authenticator may not be enforcing — check api.tf."
-  exit 1
+  echo "WARN: PATCH not seen in Access-Control-Allow-Methods (got: ${ALLOWED:-none})."
+  echo "WARN: Editing job notes and moving jobs between folders will fail in a"
+  echo "WARN: browser. Check the cors block in 03-functions/api.tf."
+fi
+
+# ------------------------------------------------------------------------------
+# Async tier — queue and connector must both exist and be ACTIVE
+# ------------------------------------------------------------------------------
+# This is the failure the API surface cannot show you. Without a live connector,
+# POST /jobs still returns 200 and the job row still appears; it just stays at
+# "submitted" forever because nothing drains the queue.
+# ------------------------------------------------------------------------------
+if [[ -n "${QUEUE_ID}" ]]; then
+  echo "NOTE: Verifying the scoring queue is ACTIVE..."
+  QSTATE=$(oci queue queue get --queue-id "${QUEUE_ID}" \
+    --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
+  echo "NOTE: Queue state - ${QSTATE}"
+
+  if [[ "${QSTATE}" != "ACTIVE" ]]; then
+    echo "WARN: Queue is not ACTIVE — submitted jobs will not be scored."
+  fi
+fi
+
+echo "NOTE: Verifying the Connector Hub service connector is ACTIVE..."
+COMPARTMENT_ID=$(cd 03-functions && terraform output -raw compartment_id 2>/dev/null || echo "")
+if [[ -n "${COMPARTMENT_ID}" ]]; then
+  SCSTATE=$(oci sch service-connector list \
+    --compartment-id "${COMPARTMENT_ID}" \
+    --display-name "resume-queue-to-worker" \
+    --query 'data.items[0]."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
+  echo "NOTE: Connector state - ${SCSTATE}"
+
+  if [[ "${SCSTATE}" != "ACTIVE" ]]; then
+    echo "WARN: Connector is not ACTIVE — jobs will sit at 'submitted' forever."
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -52,18 +118,20 @@ cat <<EOF
 =================================================================================
   Deployment validated (auth enforced)!
 =================================================================================
-  API : ${API_BASE}
-  Web : ${WEBAPP_URL}
+  API   : ${API_BASE}
+  Web   : ${WEBAPP_URL}
+  Model : ${GENAI_MODEL}
 
   Manual end-to-end test:
-    1. Open the Web URL above and click "Sign in".
-    2. Authenticate with an Identity Domains user, then create/list notes.
+    1. Open the Web URL above and sign in (or create an account).
+    2. Add a resume under "Manage Resumes".
+    3. Submit a job by URL or by pasting a description.
+    4. The row appears as "submitted", moves to "Scoring", then shows a score.
+       If it never leaves "submitted", the connector is not draining the queue.
 
-  Manual API test with a token (copy id_token from browser sessionStorage):
-    JWT="<paste sessionStorage.id_token>"
-    curl -H "Authorization: Bearer \$JWT" ${API_BASE}/notes
-    curl -X POST -H "Authorization: Bearer \$JWT" \\
-      -H "Content-Type: application/json" \\
-      -d '{"title":"Hello","note":"World"}' ${API_BASE}/notes
+  Manual API test with a token (copy id_token from browser localStorage):
+    JWT="<paste localStorage.id_token>"
+    curl -H "Authorization: Bearer \$JWT" ${API_BASE}/jobs
+    curl -H "Authorization: Bearer \$JWT" ${API_BASE}/usage
 =================================================================================
 EOF
