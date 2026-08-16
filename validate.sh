@@ -69,8 +69,17 @@ echo "NOTE: API Gateway URL - ${API_BASE}"
 # --------------------------------------------------------------------------------
 http_status() {
   local url="$1"; shift
-  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" "${url}" 2>/dev/null \
-    || echo "000"
+  local code
+
+  # curl already prints "000" to stdout when it cannot connect, AND exits
+  # non-zero. A trailing `|| echo 000` therefore appends a SECOND value and the
+  # caller sees "000000" — which is not equal to "000", so every guard that
+  # compares against it silently passes. Capture first, then substitute only if
+  # nothing came back at all.
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" "${url}" 2>/dev/null) || true
+  [[ -z "${code}" ]] && code="000"
+
+  printf '%s' "${code}"
 }
 
 # --------------------------------------------------------------------------------
