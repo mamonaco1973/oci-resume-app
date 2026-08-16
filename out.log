@@ -1,0 +1,668 @@
+NOTE: Domain      - notes-app (external-user)
+NOTE: Region      - us-ashburn-1
+NOTE: Compartment - ocid1.tenancy.oc1..aaaaaaaa2p5473pg3uchn23ro7ob6fbfnsfkc2bnk66j6wnsezg6fkw2kycq
+NOTE: Domain 'notes-app' already exists — skipping create.
+NOTE: Domain URL  - https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com
+NOTE: Enabling Access Signing Certificate (public JWKS)...
+{
+  "data": {
+    "account-always-trust-scope": false,
+    "allowed-domains": null,
+    "allowed-forgot-password-flow-return-urls": null,
+    "allowed-notification-redirect-urls": null,
+    "audit-event-retention-period": null,
+    "certificate-validation": {
+      "crl-check-on-ocsp-failure-enabled": null,
+      "crl-enabled": null,
+      "crl-location": null,
+      "crl-refresh-interval": null,
+      "ocsp-enabled": false,
+      "ocsp-responder-url": "",
+      "ocsp-settings-responder-url-preferred": null,
+      "ocsp-signing-certificate-alias": "",
+      "ocsp-timeout-duration": 1,
+      "ocsp-unknown-response-status-allowed": false
+    },
+    "cloud-account-name": "mamonaco1973",
+    "cloud-gate-cors-settings": null,
+    "cloud-migration-custom-url": null,
+    "cloud-migration-url-enabled": null,
+    "company-names": [
+      {
+        "locale": "de",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "en",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "es",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "it",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pt",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "zh-Hans",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "zh-Hant",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ja",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ko",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "no",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fr-CA",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "nl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fi",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "hr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "cs",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "da",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "hu",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ro",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ru",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sk",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sv",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "th",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "tr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "el",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sr-Latn",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pt-BR",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sr",
+        "value": "mamonaco1973"
+      }
+    ],
+    "compartment-ocid": "ocid1.tenancy.oc1..aaaaaaaa2p5473pg3uchn23ro7ob6fbfnsfkc2bnk66j6wnsezg6fkw2kycq",
+    "contact-emails": null,
+    "csr-access": "none",
+    "custom-branding": false,
+    "custom-css-location": null,
+    "custom-html-location": null,
+    "custom-translation": null,
+    "default-company-names": [
+      {
+        "locale": "de",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "en",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "es",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "it",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pt",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "zh-Hans",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "zh-Hant",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ja",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ko",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "no",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fr-CA",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "nl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "fi",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "hr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "cs",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "da",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "hu",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ro",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "ru",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sk",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sv",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "th",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "tr",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "el",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sl",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sr-Latn",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "pt-BR",
+        "value": "mamonaco1973"
+      },
+      {
+        "locale": "sr",
+        "value": "mamonaco1973"
+      }
+    ],
+    "default-images": [
+      {
+        "display": null,
+        "type": "self registration profile footer logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-self-registration-profile-footer-logo.png"
+      },
+      {
+        "display": null,
+        "type": "mobile portal header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-mobile-portal-header.png"
+      },
+      {
+        "display": null,
+        "type": "desktop portal header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-desktop-portal-header.png"
+      },
+      {
+        "display": null,
+        "type": "self registration profile header logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-self-registration-profile-header-logo.png"
+      },
+      {
+        "display": null,
+        "type": "email header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-email-header.png"
+      },
+      {
+        "display": null,
+        "type": "desktop logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-desktop-logo.gif"
+      },
+      {
+        "display": null,
+        "type": "mobile logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-mobile-logo.gif"
+      }
+    ],
+    "default-login-texts": [
+      {
+        "locale": "de",
+        "value": "Oracle Cloud-Accountanmeldung"
+      },
+      {
+        "locale": "en",
+        "value": "Oracle Cloud Account Sign In"
+      },
+      {
+        "locale": "es",
+        "value": "Conexión a la cuenta de Oracle Cloud"
+      },
+      {
+        "locale": "fr",
+        "value": "Connexion à un compte Oracle Cloud"
+      },
+      {
+        "locale": "it",
+        "value": "Connessione all'account Oracle Cloud"
+      },
+      {
+        "locale": "pt",
+        "value": "Entrada em Sessão na Conta Oracle Cloud"
+      },
+      {
+        "locale": "zh-Hans",
+        "value": "Oracle Cloud 账户登录"
+      },
+      {
+        "locale": "zh-Hant",
+        "value": "Oracle Cloud 帳戶登入"
+      },
+      {
+        "locale": "ja",
+        "value": "Oracle Cloudアカウントのサインイン"
+      },
+      {
+        "locale": "ko",
+        "value": "Oracle Cloud 계정 사인인"
+      },
+      {
+        "locale": "no",
+        "value": "Pålogging for Oracle Cloud-konto"
+      },
+      {
+        "locale": "fr-CA",
+        "value": "Connexion au compte Oracle Cloud"
+      },
+      {
+        "locale": "pl",
+        "value": "Logowanie na koncie Oracle Cloud"
+      },
+      {
+        "locale": "nl",
+        "value": "Aanmelden bij Oracle Cloud account"
+      },
+      {
+        "locale": "fi",
+        "value": "Oracle Cloud -tilin sisäänkirjaus"
+      },
+      {
+        "locale": "hr",
+        "value": "Prijava na račun za Oracle Cloud"
+      },
+      {
+        "locale": "cs",
+        "value": "Přihlášení k účtu Oracle Cloud"
+      },
+      {
+        "locale": "da",
+        "value": "Logon til Oracle Cloud-konto"
+      },
+      {
+        "locale": "hu",
+        "value": "Oracle Cloud-fiók - Bejelentkezés"
+      },
+      {
+        "locale": "ro",
+        "value": "Conectare la contul Oracle Cloud"
+      },
+      {
+        "locale": "ru",
+        "value": "Вход в учетную запись Oracle Cloud"
+      },
+      {
+        "locale": "sk",
+        "value": "Prihlásenie do konta služby Oracle Cloud"
+      },
+      {
+        "locale": "sv",
+        "value": "Inloggning på Oracle Cloud-konto"
+      },
+      {
+        "locale": "th",
+        "value": "การเข้าสู่ระบบแอคเคาท์ของ Oracle Cloud"
+      },
+      {
+        "locale": "tr",
+        "value": "Oracle Bulut Hesabı Girişi"
+      },
+      {
+        "locale": "el",
+        "value": "Σύνδεση στον λογαριασμό Oracle Cloud"
+      },
+      {
+        "locale": "sl",
+        "value": "Vpis v račun Oracle Cloud"
+      },
+      {
+        "locale": "sr-Latn",
+        "value": "Prijava na nalog Oracle Cloud"
+      },
+      {
+        "locale": "pt-BR",
+        "value": "Acesso à Conta do Oracle Cloud"
+      },
+      {
+        "locale": "sr",
+        "value": "Пријава на налог Oracle Cloud"
+      }
+    ],
+    "default-trust-scope": "Explicit",
+    "delete-in-progress": null,
+    "diagnostic-level": 0,
+    "diagnostic-record-for-search-identifies-returned-resources": false,
+    "diagnostic-tracing-upto": "2026-08-02T19:36:31.917Z",
+    "domain-ocid": "ocid1.domain.oc1..aaaaaaaakqsl5qwbesfcg7uohj43fcjfvfbofzylm6tnaniw3sihpfz2m34q",
+    "enable-terms-of-use": null,
+    "external-id": null,
+    "iam-upst-session-expiry": null,
+    "id": "Settings",
+    "idcs-created-by": {
+      "display": "idcssm",
+      "ocid": null,
+      "ref": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/admin/v1/Apps/6923eddd11d1457084f550273b51027a",
+      "type": "App",
+      "value": "6923eddd11d1457084f550273b51027a"
+    },
+    "idcs-last-modified-by": {
+      "display": "Michael Monaco",
+      "ocid": "ocid1.user.oc1..aaaaaaaa7a3jduvxdj6w4x2kykc7ky6femeg6rncdibbzju7t6ty7uh4eboq",
+      "ref": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/admin/v1/Users/121bb0173f5c40a49444811b1e46e29f",
+      "type": "User",
+      "value": "121bb0173f5c40a49444811b1e46e29f"
+    },
+    "idcs-last-upgraded-in-release": null,
+    "idcs-prevented-operations": null,
+    "images": [
+      {
+        "display": null,
+        "type": "self registration profile footer logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-self-registration-profile-footer-logo.png"
+      },
+      {
+        "display": null,
+        "type": "mobile portal header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-mobile-portal-header.png"
+      },
+      {
+        "display": null,
+        "type": "desktop portal header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-desktop-portal-header.png"
+      },
+      {
+        "display": null,
+        "type": "self registration profile header logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-self-registration-profile-header-logo.png"
+      },
+      {
+        "display": null,
+        "type": "email header",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-email-header.png"
+      },
+      {
+        "display": null,
+        "type": "desktop logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-desktop-logo.gif"
+      },
+      {
+        "display": null,
+        "type": "mobile logo",
+        "value": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/ui/v1/public/common/asset/defaultBranding/oracle-mobile-logo.gif"
+      }
+    ],
+    "is-hosted-page": null,
+    "issuer": null,
+    "locale": "en",
+    "login-texts": [
+      {
+        "locale": "de",
+        "value": "Oracle Cloud-Accountanmeldung"
+      },
+      {
+        "locale": "en",
+        "value": "Oracle Cloud Account Sign In"
+      },
+      {
+        "locale": "es",
+        "value": "Conexión a la cuenta de Oracle Cloud"
+      },
+      {
+        "locale": "fr",
+        "value": "Connexion à un compte Oracle Cloud"
+      },
+      {
+        "locale": "it",
+        "value": "Connessione all'account Oracle Cloud"
+      },
+      {
+        "locale": "pt",
+        "value": "Entrada em Sessão na Conta Oracle Cloud"
+      },
+      {
+        "locale": "zh-Hans",
+        "value": "Oracle Cloud 账户登录"
+      },
+      {
+        "locale": "zh-Hant",
+        "value": "Oracle Cloud 帳戶登入"
+      },
+      {
+        "locale": "ja",
+        "value": "Oracle Cloudアカウントのサインイン"
+      },
+      {
+        "locale": "ko",
+        "value": "Oracle Cloud 계정 사인인"
+      },
+      {
+        "locale": "no",
+        "value": "Pålogging for Oracle Cloud-konto"
+      },
+      {
+        "locale": "fr-CA",
+        "value": "Connexion au compte Oracle Cloud"
+      },
+      {
+        "locale": "pl",
+        "value": "Logowanie na koncie Oracle Cloud"
+      },
+      {
+        "locale": "nl",
+        "value": "Aanmelden bij Oracle Cloud account"
+      },
+      {
+        "locale": "fi",
+        "value": "Oracle Cloud -tilin sisäänkirjaus"
+      },
+      {
+        "locale": "hr",
+        "value": "Prijava na račun za Oracle Cloud"
+      },
+      {
+        "locale": "cs",
+        "value": "Přihlášení k účtu Oracle Cloud"
+      },
+      {
+        "locale": "da",
+        "value": "Logon til Oracle Cloud-konto"
+      },
+      {
+        "locale": "hu",
+        "value": "Oracle Cloud-fiók - Bejelentkezés"
+      },
+      {
+        "locale": "ro",
+        "value": "Conectare la contul Oracle Cloud"
+      },
+      {
+        "locale": "ru",
+        "value": "Вход в учетную запись Oracle Cloud"
+      },
+      {
+        "locale": "sk",
+        "value": "Prihlásenie do konta služby Oracle Cloud"
+      },
+      {
+        "locale": "sv",
+        "value": "Inloggning på Oracle Cloud-konto"
+      },
+      {
+        "locale": "th",
+        "value": "การเข้าสู่ระบบแอคเคาท์ของ Oracle Cloud"
+      },
+      {
+        "locale": "tr",
+        "value": "Oracle Bulut Hesabı Girişi"
+      },
+      {
+        "locale": "el",
+        "value": "Σύνδεση στον λογαριασμό Oracle Cloud"
+      },
+      {
+        "locale": "sl",
+        "value": "Vpis v račun Oracle Cloud"
+      },
+      {
+        "locale": "sr-Latn",
+        "value": "Prijava na nalog Oracle Cloud"
+      },
+      {
+        "locale": "pt-BR",
+        "value": "Acesso à Conta do Oracle Cloud"
+      },
+      {
+        "locale": "sr",
+        "value": "Пријава на налог Oracle Cloud"
+      }
+    ],
+    "max-no-of-app-cmva-to-return": null,
+    "max-no-of-app-role-members-to-return": null,
+    "meta": {
+      "created": "2026-08-02T19:36:21.743Z",
+      "last-modified": "2026-08-02T19:38:15.333Z",
+      "location": "https://idcs-b661519787b04d58abb93a4337587b87.identity.oraclecloud.com:443/admin/v1/Settings/Settings",
+      "resource-type": "Settings",
+      "version": "97816c8fb5004683a8474fe3ea58d352"
+    },
+    "migration-status": null,
+    "ocid": "ocid1.domainsettings.oc1.iad.amaaaaaa5zvpikaawaxjapvakhfsr6t4yxaemkywhqkev7a2wby54dmge4ia",
+    "on-premises-provisioning": null,
+    "preferred-language": "en",
+    "prev-issuer": null,
+    "privacy-policy-url": null,
+    "purge-configs": null,
+    "re-auth-factor": [
+      "password"
+    ],
+    "re-auth-when-changing-my-authentication-factors": true,
+    "schemas": [
+      "urn:ietf:params:scim:schemas:oracle:idcs:Settings"
+    ],
+    "service-admin-cannot-list-other-users": false,
+    "signing-cert-public-access": true,
+    "sub-mapping-attr": null,
+    "tags": null,
+    "tenancy-ocid": "ocid1.tenancy.oc1..aaaaaaaa2p5473pg3uchn23ro7ob6fbfnsfkc2bnk66j6wnsezg6fkw2kycq",
+    "tenant-custom-claims": null,
+    "terms-of-use-url": null,
+    "timezone": "America/Chicago"
+  },
+  "etag": "97816c8fb5004683a8474fe3ea58d352",
+  "opc-total-items": "1"
+}
+NOTE: Creating self-registration profile 'spa-signup'...
+NOTE: Using email template - Usage: oci identity-domains [OPTIONS] COMMAND [ARGS]...
+
+Error: No such command 'email-templates'.
+
+For OCI CLI commands and parameters suggestion, auto completion and other useful features, try the Interactive mode by typing `oci -i`.
