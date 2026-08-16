@@ -10,7 +10,7 @@
 # - Expose GET /usage so the frontend ring indicator can show remaining tokens
 #
 # NoSQL keys
-#   pk = USER#<user_id>
+#   pk = <user_id>   (bare subject — see the key budget in common.py)
 #   sk = USER#USAGE
 # ================================================================================
 

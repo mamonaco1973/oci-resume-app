@@ -6,15 +6,13 @@
 #
 # Design
 # - Folder metadata stored in the NoSQL single table alongside jobs/resumes
-# - pk = USER#<user_id>, sk = FOLDER#<folder_id>
+# - pk = <user_id>, sk = FOLDER#<folder_id>
 # - Deleting a folder clears folder_id from any jobs that referenced it, so the
 #   jobs survive; only the grouping goes away
 # ================================================================================
 
-import uuid
-
 import nosql_util
-from common import ok, error, utc_now
+from common import ok, error, new_id, utc_now
 
 
 # --------------------------------------------------------------------------------
@@ -49,7 +47,7 @@ def create_folder(req):
     if not name:
         return error(400, "name is required")
 
-    folder_id = str(uuid.uuid4())
+    folder_id = new_id()
 
     nosql_util.put_item(req.pk, f"FOLDER#{folder_id}", {
         "folder_id":  folder_id,

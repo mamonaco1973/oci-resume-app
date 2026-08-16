@@ -107,15 +107,33 @@ apply.sh / destroy.sh / check_env.sh / validate.sh
 ## Data Model (NoSQL single table `resume_app`)
 
 ```
-pk  STRING   USER#<user_id>       shard key
+pk  STRING   <user_id>            shard key — the bare `sub` claim
 sk  STRING   RESUME#|JOB#|FOLDER#|USER#USAGE
 doc JSON     everything else
 ```
 
-- `pk=USER#<id>`, `sk=RESUME#<id>` — resume metadata
-- `pk=USER#<id>`, `sk=JOB#<id>` — job metadata + `attachments` array
-- `pk=USER#<id>`, `sk=FOLDER#<id>` — folder name + metadata
-- `pk=USER#<id>`, `sk=USER#USAGE` — `tokens_used`, `token_limit`
+- `pk=<id>`, `sk=RESUME#<id>` — resume metadata
+- `pk=<id>`, `sk=JOB#<id>` — job metadata + `attachments` array
+- `pk=<id>`, `sk=FOLDER#<id>` — folder name + metadata
+- `pk=<id>`, `sk=USER#USAGE` — `tokens_used`, `token_limit`
+
+**The 64-byte key limit.** OCI NoSQL caps the *combined* pk + sk at 64 bytes;
+DynamoDB allows 2048 for the partition key alone. The AWS key design therefore
+does not fit as written — `USER#` + a 22-char subject (27) plus `RESUME#` + a
+36-char UUID (43) is 70 bytes, and every write fails with
+`KeySizeLimitExceeded`. Two changes bring it inside:
+
+1. `pk` is the bare subject, no `USER#` prefix — the prefix carried no
+   information, since every partition key here is a user.
+2. Entity ids are `common.new_id()` — 20 hex chars — not a 36-char UUID.
+
+Worst case at a 32-char subject is 59 bytes. `nosql_util._check_key()` enforces
+the limit on every get/put/delete so a future key change fails with a message
+naming the offending key rather than an opaque service error — or, on reads,
+rather than silently returning no row.
+
+Object Storage names still use the readable `users/USER#{id}/jobs/JOB#{id}/…`
+layout; object names have a 1024-char limit, so the budget does not apply there.
 
 **Why `doc JSON`:** DynamoDB is schemaless and the four entity types differ
 freely; OCI NoSQL requires a declared schema. A JSON payload column keeps the

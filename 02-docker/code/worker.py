@@ -29,7 +29,7 @@ from bs4 import BeautifulSoup, Comment
 
 import nosql_util
 import os_util
-from common import COMPARTMENT_ID, SIGNER, utc_now
+from common import COMPARTMENT_ID, SIGNER, user_pk, utc_now
 
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import (
@@ -183,7 +183,7 @@ def is_over_token_limit(user_id):
     the API submission check ran out of budget.
     """
     try:
-        item = nosql_util.get_item(f"USER#{user_id}", "USER#USAGE") or {}
+        item = nosql_util.get_item(user_pk(user_id), "USER#USAGE") or {}
         used = int(item.get("tokens_used", 0) or 0)
         limit = int(
             item.get("token_limit", TOKEN_LIMIT_DEFAULT) or TOKEN_LIMIT_DEFAULT
@@ -207,7 +207,7 @@ def accumulate_tokens(user_id, input_tokens, output_tokens):
         return
 
     try:
-        pk = f"USER#{user_id}"
+        pk = user_pk(user_id)
 
         def apply(item):
             item["tokens_used"] = int(item.get("tokens_used", 0) or 0) + total
@@ -235,7 +235,7 @@ def update_job_status(user_id, job_id, status, status_message):
         item["status_message"] = status_message
         item["updated_at"] = utc_now()
 
-    nosql_util.update_doc(f"USER#{user_id}", f"JOB#{job_id}", apply)
+    nosql_util.update_doc(user_pk(user_id), f"JOB#{job_id}", apply)
 
 
 def update_job_title_and_company(user_id, job_id, job_title, company_name):
@@ -249,7 +249,7 @@ def update_job_title_and_company(user_id, job_id, job_title, company_name):
         item["company"] = company_name
         item["updated_at"] = utc_now()
 
-    nosql_util.update_doc(f"USER#{user_id}", f"JOB#{job_id}", apply)
+    nosql_util.update_doc(user_pk(user_id), f"JOB#{job_id}", apply)
 
 
 def update_job_extracted_fields(user_id, job_id, job_title, company_name,
@@ -262,7 +262,7 @@ def update_job_extracted_fields(user_id, job_id, job_title, company_name,
         item["score"] = score
         item["updated_at"] = utc_now()
 
-    nosql_util.update_doc(f"USER#{user_id}", f"JOB#{job_id}", apply)
+    nosql_util.update_doc(user_pk(user_id), f"JOB#{job_id}", apply)
 
 
 # =================================================================================

@@ -12,7 +12,7 @@
 # - Page through query results so callers never see a truncated list
 #
 # Table shape (see 03-functions/nosql.tf)
-#   pk  STRING   USER#<user_id>          shard key
+#   pk  STRING   <user_id>               shard key (bare subject)
 #   sk  STRING   RESUME#|JOB#|FOLDER#|USER#USAGE
 #   doc JSON     everything else
 # ================================================================================
@@ -27,6 +27,35 @@ from common import COMPARTMENT_ID, SIGNER, TABLE_NAME
 log = logging.getLogger(__name__)
 
 _client = NosqlClient(config={}, signer=SIGNER)
+
+# OCI NoSQL rejects a composite primary key over 64 bytes. See the budget in
+# common.py for how pk and sk are sized to fit.
+MAX_KEY_BYTES = 64
+
+
+def _check_key(pk, sk):
+    """Raise before the SDK call if the composite key exceeds the limit.
+
+    The service error for this is KeySizeLimitExceeded on update_row, which
+    names a byte count but not which key or which entity produced it. Failing
+    here instead reports both, and catches a too-long key on reads as well —
+    where the service would otherwise just return no row and the bug would
+    present as silently missing data.
+
+    Args:
+        pk : Partition key.
+        sk : Sort key.
+
+    Raises:
+        ValueError: If the combined key is over MAX_KEY_BYTES.
+    """
+    total = len(str(pk).encode("utf-8")) + len(str(sk).encode("utf-8"))
+    if total > MAX_KEY_BYTES:
+        raise ValueError(
+            f"primary key is {total} bytes, over the {MAX_KEY_BYTES}-byte "
+            f"NoSQL limit (pk={len(str(pk))} chars, sk={sk!r}) — see the key "
+            f"budget in common.py"
+        )
 
 
 # ================================================================================
@@ -101,6 +130,7 @@ def get_item(pk, sk):
     Returns:
         dict: Flat item, or {} if no such row exists.
     """
+    _check_key(pk, sk)
     resp = _client.get_row(
         table_name_or_id=TABLE_NAME,
         key=[f"pk:{pk}", f"sk:{sk}"],
@@ -117,6 +147,7 @@ def put_item(pk, sk, item):
         sk   : Sort key.
         item : Flat attribute dict; pk/sk inside it are ignored.
     """
+    _check_key(pk, sk)
     _client.update_row(
         table_name_or_id=TABLE_NAME,
         update_row_details=UpdateRowDetails(
@@ -133,6 +164,7 @@ def delete_item(pk, sk):
         pk : Partition key.
         sk : Sort key.
     """
+    _check_key(pk, sk)
     _client.delete_row(
         table_name_or_id=TABLE_NAME,
         key=[f"pk:{pk}", f"sk:{sk}"],

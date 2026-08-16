@@ -21,11 +21,10 @@
 # ================================================================================
 
 import base64
-import uuid
 
 import nosql_util
 import os_util
-from common import ok, error, utc_now
+from common import ok, error, new_id, user_pk, utc_now
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024   # 10 MB
 MAX_ATTACHMENTS      = 5
@@ -33,7 +32,7 @@ MAX_ATTACHMENTS      = 5
 
 def _get_job_item(user_id, job_id):
     """Fetch a job item, or {} when it does not exist."""
-    return nosql_util.get_item(f"USER#{user_id}", f"JOB#{job_id}")
+    return nosql_util.get_item(user_pk(user_id), f"JOB#{job_id}")
 
 
 def _save_attachments(pk, job_id, attachments):
@@ -116,7 +115,7 @@ def upload_attachment(req):
     if len(raw) > MAX_ATTACHMENT_BYTES:
         return error(400, "file exceeds 10 MB limit")
 
-    att_id      = str(uuid.uuid4())
+    att_id      = new_id()
     object_name = os_util.attachment_key(user_id, job_id, att_id, filename)
 
     os_util.write_bytes(object_name, raw, content_type)
@@ -130,7 +129,7 @@ def upload_attachment(req):
     }
     existing.append(att)
 
-    _save_attachments(f"USER#{user_id}", job_id, existing)
+    _save_attachments(user_pk(user_id), job_id, existing)
 
     return ok(att)
 
@@ -225,6 +224,6 @@ def delete_attachment(req):
     )
 
     updated = [a for a in attachments if a.get("attachment_id") != att_id]
-    _save_attachments(f"USER#{user_id}", job_id, updated)
+    _save_attachments(user_pk(user_id), job_id, updated)
 
     return ok({"deleted": att_id})

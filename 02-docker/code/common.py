@@ -17,6 +17,7 @@ import io
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 
 from oci.auth.signers import get_resource_principals_signer
@@ -48,6 +49,69 @@ log = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------
 
 SIGNER = get_resource_principals_signer()
+
+
+# ================================================================================
+# Key construction — and the 64-byte budget it has to fit inside
+# ================================================================================
+# OCI NoSQL limits the TOTAL primary key (pk + sk) to 64 bytes. DynamoDB allows
+# 2048 bytes for the partition key alone, so the single-table key design ported
+# from AWS unchanged did not fit: "USER#" + a 22-char subject (27) plus
+# "RESUME#" + a 36-char UUID (43) is 70 bytes, and every write failed with
+# KeySizeLimitExceeded.
+#
+# Two changes bring it inside the limit with room to spare:
+#
+#   1. pk is the bare subject, with no "USER#" prefix. The prefix carried no
+#      information — every partition key in this table is a user.
+#   2. Entity ids are 20 hex characters instead of a 36-character UUID.
+#
+# Worst-case budget, assuming a 32-char subject (Identity Domains issues a GUID
+# of that length; the observed one is 22):
+#
+#   pk  32  +  sk "RESUME#" + 20  = 27   ->  59
+#   pk  32  +  sk "JOB#"    + 20  = 24   ->  56
+#   pk  32  +  sk "FOLDER#" + 20  = 27   ->  59
+#   pk  32  +  sk "USER#USAGE"    = 10   ->  42
+#
+# Anything added to a sort key has to be checked against this. The sort-key
+# prefixes are kept readable deliberately — they cost a few bytes and make rows
+# legible in the console, which the budget can afford.
+# ================================================================================
+
+# 10 bytes -> 20 hex chars, 80 bits. Collision risk across the per-user id
+# volumes this app allows (1000 jobs, a handful of resumes and folders) is far
+# below anything worth engineering against.
+ID_BYTES = 10
+
+
+def new_id():
+    """Return a short, URL-safe unique id for a resume, job, folder or file.
+
+    Deliberately not uuid4(): its 36-character string form does not fit the
+    NoSQL primary key budget documented above.
+
+    Returns:
+        str: 20 lowercase hex characters.
+    """
+    return secrets.token_hex(ID_BYTES)
+
+
+def user_pk(user_id):
+    """Return the partition key for a user.
+
+    The key is the subject claim verbatim. This exists as a function rather
+    than an inline f-string so the convention has exactly one definition — the
+    previous inline "USER#{user_id}" was repeated across six modules, which is
+    what made the key-size fix a fourteen-site edit instead of a one-line one.
+
+    Args:
+        user_id: The caller's `sub` claim.
+
+    Returns:
+        str: The partition key.
+    """
+    return str(user_id)
 
 
 # ================================================================================
@@ -189,7 +253,7 @@ class Request:
     @property
     def pk(self) -> str:
         """Partition key for the caller's rows."""
-        return f"USER#{self.require_user()}"
+        return user_pk(self.require_user())
 
 
 # ================================================================================

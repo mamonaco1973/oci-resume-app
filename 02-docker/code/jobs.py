@@ -14,7 +14,7 @@
 # - Notes are the only mutable field
 #
 # NoSQL keys
-#   pk = USER#<user_id>
+#   pk = <user_id>   (bare subject — see the key budget in common.py)
 #   sk = JOB#<job_id>
 #
 # Object Storage layout
@@ -27,12 +27,11 @@
 
 import json
 import logging
-import uuid
 
 import nosql_util
 import os_util
 from common import QUEUE_ENDPOINT, QUEUE_ID, SIGNER
-from common import ok, error, utc_now
+from common import ok, error, new_id, user_pk, utc_now
 
 from oci.queue import QueueClient
 from oci.queue.models import PutMessagesDetails, PutMessagesDetailsEntry
@@ -73,7 +72,7 @@ _queue = QueueClient(
 # --------------------------------------------------------------------------------
 def build_job_paths(user_id, job_id):
     return {
-        "pk": f"USER#{user_id}",
+        "pk": user_pk(user_id),
         "sk": f"JOB#{job_id}",
         "prefix":              os_util.job_prefix(user_id, job_id),
         "resume_snapshot_key": os_util.resume_snapshot_key(user_id, job_id),
@@ -125,7 +124,7 @@ def enqueue_job_request(user_id, job_id, resume_id, source_type, job_url):
 def create_job(req):
 
     user_id = req.require_user()
-    pk      = f"USER#{user_id}"
+    pk      = user_pk(user_id)
 
     resume_id       = (req.body.get("resume_id") or "").strip()
     source_type     = (req.body.get("source_type") or "").strip()
@@ -178,7 +177,7 @@ def create_job(req):
     # Create job identifiers and paths
     # --------------------------------------------------------------------------
 
-    job_id = str(uuid.uuid4())
+    job_id = new_id()
     paths  = build_job_paths(user_id, job_id)
     now    = utc_now()
 
@@ -309,7 +308,7 @@ def get_job(req):
     if not job_id:
         return error(400, "job_id is required")
 
-    item = nosql_util.get_item(f"USER#{user_id}", f"JOB#{job_id}")
+    item = nosql_util.get_item(user_pk(user_id), f"JOB#{job_id}")
     if not item:
         return error(404, "job not found")
 

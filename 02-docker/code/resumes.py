@@ -9,18 +9,16 @@
 # - Partition key groups all user objects together
 #
 # NoSQL keys
-#   pk = USER#<user_id>
+#   pk = <user_id>   (bare subject — see the key budget in common.py)
 #   sk = RESUME#<resume_id>
 #
 # Object Storage path
 #   users/USER#<user_id>/resumes/RESUME#<resume_id>.txt
 # ================================================================================
 
-import uuid
-
 import nosql_util
 import os_util
-from common import ok, error, utc_now
+from common import ok, error, new_id, user_pk, utc_now
 
 
 # --------------------------------------------------------------------------------
@@ -38,7 +36,7 @@ from common import ok, error, utc_now
 # - tuple of (pk, sk, object_name)
 # --------------------------------------------------------------------------------
 def build_keys(user_id, resume_id):
-    pk = f"USER#{user_id}"
+    pk = user_pk(user_id)
     sk = f"RESUME#{resume_id}"
     return pk, sk, os_util.resume_key(user_id, resume_id)
 
@@ -62,7 +60,7 @@ def create_resume(req):
     if not resume_text:
         return error(400, "resume is required")
 
-    resume_id = str(uuid.uuid4())
+    resume_id = new_id()
     pk, sk, object_name = build_keys(user_id, resume_id)
     now = utc_now()
 
