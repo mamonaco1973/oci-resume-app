@@ -22,7 +22,15 @@ set -euo pipefail
 # Discover endpoints from Terraform output
 # ------------------------------------------------------------------------------
 echo "NOTE: Locating API Gateway endpoint..."
-API_BASE=$(cd 03-functions && terraform output -raw api_gateway_endpoint)
+# Guarded rather than left bare: without state this fails under set -e and the
+# script vanishes with no output, which reads as a crash instead of "phase 3 has
+# not been applied".
+API_BASE=$(cd 03-functions && terraform output -raw api_gateway_endpoint 2>/dev/null || echo "")
+if [[ -z "${API_BASE}" ]]; then
+  echo "ERROR: Could not read api_gateway_endpoint from 03-functions state."
+  echo "ERROR: Run ./apply.sh first, or check that phase 3 applied cleanly."
+  exit 1
+fi
 WEBAPP_URL=$(cd 04-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
 QUEUE_ID=$(cd 03-functions && terraform output -raw queue_id 2>/dev/null || echo "")
 GENAI_MODEL=$(cd 03-functions && terraform output -raw genai_model_id 2>/dev/null || echo "unknown")
@@ -41,10 +49,65 @@ echo "NOTE: API Gateway URL - ${API_BASE}"
 # transformations — so a mistake that only affects the parameterised routes
 # would slip past a single-path check.
 # ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------
+# Function: http_status
+#
+# Purpose
+# Return the HTTP status for a URL, or "000" when the request never completed.
+#
+# curl exits non-zero when it cannot resolve or connect. Under `set -e` that
+# kills the script mid-assignment with NO output at all, which looks like a
+# silent crash rather than a network problem — so the failure is swallowed here
+# and reported as 000 instead.
+#
+# Arguments
+# - $1 : URL
+# - $@ : any extra curl arguments
+#
+# Returns
+# - Three-digit status, or 000
+# --------------------------------------------------------------------------------
+http_status() {
+  local url="$1"; shift
+  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" "${url}" 2>/dev/null \
+    || echo "000"
+}
+
+# --------------------------------------------------------------------------------
+# Wait for the gateway hostname to resolve
+# --------------------------------------------------------------------------------
+# A freshly created API Gateway gets a new hostname, and DNS for it is not
+# resolvable the instant Terraform returns. On a destroy/apply cycle the first
+# curl therefore fails outright.
+#
+# Polling beats a fixed sleep: a re-apply against an existing gateway continues
+# immediately instead of always paying the wait, and a genuinely unreachable
+# endpoint reports that rather than being masked by a sleep that was never long
+# enough anyway.
+# --------------------------------------------------------------------------------
+echo "NOTE: Waiting for the gateway endpoint to resolve..."
+
+GW_READY="no"
+for attempt in $(seq 1 30); do
+  if [[ "$(http_status "${API_BASE}/jobs")" != "000" ]]; then
+    GW_READY="yes"
+    break
+  fi
+  echo "NOTE: Not resolving yet (attempt ${attempt}/30) — retrying in 10s..."
+  sleep 10
+done
+
+if [[ "${GW_READY}" != "yes" ]]; then
+  echo "ERROR: ${API_BASE} did not become reachable after 5 minutes."
+  echo "ERROR: Check the gateway exists and its hostname resolves:"
+  echo "ERROR:   dig +short \$(echo ${API_BASE} | sed 's#https://##')"
+  exit 1
+fi
+
 echo "NOTE: Verifying unauthenticated requests are rejected..."
 
 for path in "/jobs" "/resumes/00000000-0000-0000-0000-000000000000"; do
-  STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${API_BASE}${path}")
+  STATUS=$(http_status "${API_BASE}${path}")
 
   if [[ "${STATUS}" == "401" || "${STATUS}" == "403" ]]; then
     echo "NOTE: Unauthenticated GET ${path} correctly rejected (HTTP ${STATUS})."
@@ -64,11 +127,14 @@ done
 # ------------------------------------------------------------------------------
 echo "NOTE: Verifying CORS preflight allows PATCH..."
 
-ALLOWED=$(curl -s -o /dev/null -D - -X OPTIONS \
+# `|| true` because set -o pipefail would otherwise abort the whole script if
+# curl hiccups here — a CORS check failing is a warning, not a reason to stop.
+ALLOWED=$(curl -s -o /dev/null -D - -X OPTIONS --max-time 10 \
   -H "Origin: https://example.com" \
   -H "Access-Control-Request-Method: PATCH" \
   "${API_BASE}/jobs/test/notes" 2>/dev/null \
-  | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-methods"{print $2}')
+  | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-methods"{print $2}' \
+  || true)
 
 if [[ "${ALLOWED}" == *"PATCH"* ]]; then
   echo "NOTE: CORS preflight advertises PATCH."

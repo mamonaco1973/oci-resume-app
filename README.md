@@ -36,14 +36,17 @@ Every cloud in this set solves that the same way and names it differently:
 | Azure | Service Bus | Functions trigger |
 | **OCI** | **Queue** | **Connector Hub** |
 
-OCI is the outlier, and it is worth knowing why. Connector Hub has **no
-invoke-on-arrival semantic**. It polls the queue and flushes a batch when either
-a size or a time threshold is reached, and the timer starts with the first
-message of the batch. `batch_time_in_sec` cannot be set below 60 — so at the
-default batch size a single submitted job waits the **full minute** before the
-worker ever sees it. Setting `batch_size_in_num = 1` is what makes delivery
-prompt (1–2 seconds). Leaving those at their defaults is the most common way to
-conclude the pipeline is broken when it is merely batching.
+OCI's bridge works differently from the other three, and the difference is worth
+knowing only because of one default. Connector Hub polls rather than triggering
+on arrival, flushing a batch when either a size or a time threshold is reached.
+`batch_time_in_sec` cannot be set below 60, so at the default batch size a
+single submitted job waits a full minute before the worker sees it — which reads
+as a dead pipeline.
+
+Set `batch_size_in_num = 1`, as this project does, and delivery takes 1–2
+seconds. That is perfectly adequate for a workload measured in tens of seconds;
+the gap against an event-driven trigger is irrelevant here. The default is the
+problem, not the mechanism.
 
 ## Key capabilities demonstrated
 
