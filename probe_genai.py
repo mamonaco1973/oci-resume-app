@@ -13,12 +13,17 @@ Why this exists
     answer.
 
 Usage
-    python3 probe_genai.py              # probe every CHAT model in the region
-    python3 probe_genai.py meta google  # only models whose name matches a filter
+    python3 probe_genai.py                  # probe every CHAT model
+    python3 probe_genai.py meta google      # only names matching a filter
+    python3 probe_genai.py --check <name>   # exact one; exit 0 works, 1 does not
+
+    --check is what check_env.sh calls as a pre-flight, so a model that has been
+    withdrawn from on-demand fails the deploy instead of failing every scoring
+    job later.
 
     Requires the `oci` Python SDK and a configured ~/.oci/config. If the SDK is
     not on the system python, the OCI CLI ships one:
-        ~/lib/oracle-cli/bin/python probe_genai.py
+        PY=$(head -1 ~/bin/oci | sed 's/^#!//; s/ .*//'); "$PY" probe_genai.py
 """
 
 import sys
@@ -38,11 +43,18 @@ config = oci.config.from_file()
 region = config["region"]
 tenancy = config["tenancy"]
 
-filters = [a.lower() for a in sys.argv[1:]]
+args = sys.argv[1:]
 
-print(f"region   : {region}")
-print(f"tenancy  : {tenancy}")
-print(f"filters  : {filters or '(none — probing all CHAT models)'}\n")
+# --check <name>: verify one exact model and communicate through the exit code
+# so a shell pre-flight can gate on it.
+check_mode = len(args) >= 2 and args[0] == "--check"
+check_name = args[1] if check_mode else None
+filters = [] if check_mode else [a.lower() for a in args]
+
+if not check_mode:
+    print(f"region   : {region}")
+    print(f"tenancy  : {tenancy}")
+    print(f"filters  : {filters or '(none — probing all CHAT models)'}\n")
 
 # ------------------------------------------------------------------------------
 # List candidates from the control plane
@@ -57,9 +69,15 @@ for m in models:
     if "CHAT" not in caps:
         continue
     name = m.display_name or ""
+    if check_mode and name != check_name:
+        continue
     if filters and not any(f in name.lower() for f in filters):
         continue
     candidates.append(m)
+
+if check_mode and not candidates:
+    print(f"NOT LISTED: {check_name} is not a CHAT model in {region}")
+    sys.exit(1)
 
 # Deduplicate by display name — the catalog carries multiple versions of some
 # models under one name, and probing each is just repeated latency.
@@ -71,7 +89,8 @@ for m in candidates:
     seen.add(m.display_name)
     unique.append(m)
 
-print(f"{len(unique)} CHAT model(s) to probe\n")
+if not check_mode:
+    print(f"{len(unique)} CHAT model(s) to probe\n")
 
 # ------------------------------------------------------------------------------
 # Probe each with a real, tiny chat call
@@ -103,12 +122,21 @@ for m in unique:
 
     try:
         inf.chat(details)
+        if check_mode:
+            print(f"OK: {m.display_name} answers on-demand chat")
+            sys.exit(0)
         print(f"  OK    {label}")
         working.append(m.display_name)
     except oci.exceptions.ServiceError as exc:
         # 404 here is the interesting one: listed, but not served on demand.
+        if check_mode:
+            print(f"NOT ON DEMAND: {m.display_name} -> {exc.status} {exc.message}")
+            sys.exit(1)
         print(f"  {exc.status:<5} {label} {exc.message[:60]}")
     except Exception as exc:
+        if check_mode:
+            print(f"ERROR probing {m.display_name}: {type(exc).__name__}: {exc}")
+            sys.exit(1)
         print(f"  ERR   {label} {type(exc).__name__}: {str(exc)[:50]}")
 
 # ------------------------------------------------------------------------------

@@ -21,26 +21,40 @@
 #   - validate.sh   readable name for the summary output
 #
 # ------------------------------------------------------------------------------
-# Why Llama 4 and not the obvious choice
+# Listing a model tells you NOTHING about whether you can call it
 # ------------------------------------------------------------------------------
-# OCI retires on-demand models aggressively. As of 2026-08-16 in us-ashburn-1:
-#   - every Cohere chat model is already on-demand retired
-#   - the entire Grok 3 / 4 / 4-fast / code-fast line retired 2026-08-15
-#   - there is no Anthropic model at all
-#   - Google Gemini is present, but Gemini 2.5 is retiring upstream
-# Meta's Llama 4 entries carry no retirement date and have open weights behind
-# them, which makes them the most durable choice for a build that has to keep
-# working long after it is published.
+# `list-models` is the control plane. It returns every model the region knows
+# about, including ones available only through a dedicated AI cluster. A model
+# can be ACTIVE, advertise the CHAT capability, carry no retirement date, and
+# resolve to a perfectly valid OCID — and still fail every chat() call with
+# 404 "Entity with key <ocid> not found".
 #
-# Before a fresh deploy, confirm the model is still served on demand:
-#   T=$(grep -m1 '^tenancy' ~/.oci/config | cut -d= -f2 | tr -d ' ')
-#   oci generative-ai model-collection list-models --compartment-id "$T" \
-#     --region us-ashburn-1 --output json \
-#     | jq -r '.data.items[] | select(.capabilities[]? == "CHAT")
-#              | "\(.vendor)  \(."display-name")  \(."time-on-demand-retired")"'
+# Measured in us-ashburn-1 on 2026-08-17 by calling chat() against every listed
+# CHAT model (see probe_genai.py). On-demand actually works with:
 #
-# Swap to meta.llama-4-maverick-17b-128e-instruct-fp8 for better scoring
-# quality at higher cost — it is a drop-in change, no code edits needed.
+#     xai.grok-4.3                      <- current pick
+#     xai.grok-4.20-reasoning
+#     xai.grok-4.20-0309-reasoning
+#     xai.grok-4.20-0309-non-reasoning
+#     xai.grok-4.20-non-reasoning
+#     google.gemini-2.5-flash
+#     google.gemini-2.5-pro
+#     google.gemini-2.5-flash-lite
+#
+# Everything else is listed but NOT on demand: all Meta Llama 4, both OpenAI
+# gpt-oss sizes, and every Cohere model. There is no Anthropic model at all.
+#
+# Why grok-4.3 out of those eight: it is the newest (created 2026-05-01) and
+# carries no retirement date. The Gemini 2.5 line works today but is retiring
+# upstream, and xAI's own older line (grok-3, grok-4, grok-4-fast) retired on
+# 2026-08-15 — so recency is the only real signal available.
+#
+# Alternative: google.gemini-2.5-flash-lite is cheaper and is the exact model
+# gcp-resume-app uses, so its prompts port verbatim — at the cost of a known
+# upstream sunset. Swapping is a one-line change here; no code edits.
+#
+# Re-verify before any fresh deploy — do NOT trust the model list:
+#     python3 probe_genai.py
 # ==============================================================================
 
-export GENAI_MODEL_ID="meta.llama-4-scout-17b-16e-instruct"
+export GENAI_MODEL_ID="xai.grok-4.3"

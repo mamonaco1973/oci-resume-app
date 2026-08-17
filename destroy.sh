@@ -38,6 +38,18 @@ export TF_VAR_tenancy_ocid="$TENANCY_OCID"
 export TF_VAR_compartment_id="$OCI_COMPARTMENT_ID"
 export TF_VAR_region="$REGION"
 
+# genai_model_id has no default — deliberately, so a missing value fails at plan
+# time rather than deploying a worker pointed at nothing. Terraform still
+# demands a value on DESTROY, though, and without this the teardown stops on an
+# interactive prompt.
+#
+# A placeholder is correct here rather than resolving the real OCID: the value
+# is only ever read as config on Function resources that are being deleted, so
+# looking it up would mean an extra API round trip to feed a field nothing will
+# read. Resolving it would also make destroy fail whenever the model has since
+# been withdrawn — precisely when you most need the teardown to work.
+export TF_VAR_genai_model_id="unused-during-destroy"
+
 # Must match the domain used at apply time so the data source resolves the same
 # domain (and the correct app to deactivate).  REQUIRED — no silent fallback,
 # or destroy could target the wrong domain's app.

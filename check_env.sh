@@ -88,5 +88,47 @@ if [[ -z "${GENAI_MODEL_OCID}" ]]; then
   exit 1
 fi
 
-echo "NOTE: Generative AI model is available on demand."
+echo "NOTE: Model is listed as a CHAT model."
 echo "NOTE: Model OCID - ${GENAI_MODEL_OCID}"
+
+# ------------------------------------------------------------------------------
+# Prove the model actually answers an on-demand chat call
+# ------------------------------------------------------------------------------
+# Being listed proves nothing. `list-models` is the control plane and returns
+# models that are only available through a dedicated AI cluster — ACTIVE, CHAT
+# capable, no retirement date, valid OCID, and every chat() call 404s. Measured
+# in us-ashburn-1: all Meta Llama 4, both OpenAI gpt-oss sizes and every Cohere
+# model list fine and cannot be called on demand.
+#
+# The only reliable test is to make the call, so probe_genai.py does exactly
+# that against the configured model. Best-effort: it needs a python with the
+# oci SDK, and if none is found the deploy continues with a warning rather than
+# being blocked by a tooling gap.
+# ------------------------------------------------------------------------------
+
+GENAI_PY=""
+for candidate in \
+    "$(command -v python3 || true)" \
+    "$(head -1 "$(command -v oci || echo /nonexistent)" 2>/dev/null | sed 's/^#!//; s/ .*//')" \
+    "${HOME}/lib/oracle-cli/bin/python"; do
+  if [ -x "${candidate}" ] && "${candidate}" -c "import oci" 2>/dev/null; then
+    GENAI_PY="${candidate}"
+    break
+  fi
+done
+
+if [ -z "${GENAI_PY}" ]; then
+  echo "WARN: No python with the oci SDK found — skipping the on-demand chat probe."
+  echo "WARN: Verify manually before trusting the deploy:  python3 probe_genai.py"
+else
+  echo "NOTE: Probing on-demand chat with ${GENAI_MODEL_ID}..."
+  if "${GENAI_PY}" probe_genai.py --check "${GENAI_MODEL_ID}"; then
+    echo "NOTE: Generative AI model answers on demand."
+  else
+    echo "ERROR: '${GENAI_MODEL_ID}' is listed but does NOT serve on-demand chat."
+    echo "ERROR: It likely requires a dedicated AI cluster. See what does work:"
+    echo "ERROR:   ${GENAI_PY} probe_genai.py"
+    echo "ERROR: Then update GENAI_MODEL_ID in genai-config.sh."
+    exit 1
+  fi
+fi
