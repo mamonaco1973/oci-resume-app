@@ -40,11 +40,91 @@ let bulkHandlersBound = false;
 
 export async function loadJobs() {
   initJobModal();
-  jobs = await listJobs();
+
+  // Only narrate on the FIRST load. Auto-refresh polling calls this on a timer,
+  // and swapping the populated table out for a loading panel every few seconds
+  // would flicker badly.
+  const firstLoad = jobs.length === 0;
+  if (firstLoad) startLoadingNarration();
+
+  try {
+    jobs = await listJobs();
+  } catch (error) {
+    // renderJobsTable() never runs on this path, so without replacing the copy
+    // the panel keeps claiming it is "still starting up" underneath the error
+    // alert app.js raises.
+    if (firstLoad) showLoadFailed();
+    throw error;
+  } finally {
+    stopLoadingNarration();
+  }
+
   sortJobs();
   renderJobsTable();
   bindSortHandlers();
   bindBulkHandlers();
+}
+
+/* ============================================================================ */
+/* Loading narration                                                            */
+/*                                                                              */
+/* OCI Functions scale to zero, so the first request after an idle period waits */
+/* on a container start plus an image pull — up to about a minute. A bare       */
+/* "Loading your jobs…" for that long reads as a hung app, and the natural      */
+/* reaction is to reload, which accomplishes nothing.                           */
+/*                                                                              */
+/* So the message escalates: plain at first, then explains what is happening,   */
+/* then sets an expectation for how long and that it is one-time. Saying "this  */
+/* is a cold start" is both true and more reassuring than a spinner.            */
+/* ============================================================================ */
+
+const LOADING_STAGES = [
+  {
+    after: 4000,
+    html:
+      "<p>Loading your jobs…</p>" +
+      "<p class='loading-note'>Waking the backend — OCI Functions scale to " +
+      "zero, so the first request has to start a container.</p>"
+  },
+  {
+    after: 15000,
+    html:
+      "<p>Still starting up…</p>" +
+      "<p class='loading-note'>A cold start can take up to a minute. This " +
+      "only happens on the first request after an idle period — everything " +
+      "after it is fast.</p>"
+  }
+];
+
+let loadingTimers = [];
+
+function startLoadingNarration() {
+  const emptyState = document.getElementById("empty-state");
+  const table      = document.getElementById("jobs-table");
+  if (!emptyState) return;
+
+  table?.classList.add("hidden");
+  emptyState.classList.remove("hidden");
+  emptyState.innerHTML = "<p>Loading your jobs…</p>";
+
+  stopLoadingNarration();
+  loadingTimers = LOADING_STAGES.map((stage) =>
+    setTimeout(() => { emptyState.innerHTML = stage.html; }, stage.after)
+  );
+}
+
+function stopLoadingNarration() {
+  loadingTimers.forEach(clearTimeout);
+  loadingTimers = [];
+}
+
+function showLoadFailed() {
+  const emptyState = document.getElementById("empty-state");
+  if (!emptyState) return;
+
+  emptyState.innerHTML =
+    "<p>Could not load your jobs.</p>" +
+    "<p class='loading-note'>Use <b>Refresh</b> to try again.</p>";
 }
 
 export function setFolderFilter(folderId) { filterFolderId = folderId || ""; selectedJobIds.clear(); }

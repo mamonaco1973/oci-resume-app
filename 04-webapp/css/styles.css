@@ -370,6 +370,17 @@ tr:hover {
   border: 1px dashed #ccc;
 }
 
+/* Secondary line under the loading message. Deliberately quieter than the
+   heading — it explains a wait rather than reporting a problem, so it should
+   read as context, not as an error. */
+.loading-note {
+  margin: 10px auto 0;
+  max-width: 520px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
 /* ================================================================ */
 /* Modal */
 /* ================================================================ */
