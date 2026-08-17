@@ -234,7 +234,7 @@ card("worker", 1390, 630, 400, 140, PURPLE, "code",
      "Function: resume-worker", ["300s timeout, 2 GB", "scrape, extract, score"])
 
 card("genai", 1390, 855, 400, 140, PURPLE, "sparkles",
-     "OCI Generative AI", ["meta.llama-4-scout", "extract fields, then score"])
+     "OCI Generative AI", ["xai.grok-4.3", "extract fields, then score"])
 
 card("store", 900, 855, 400, 140, TEAL, "drive",
      "Object Storage", ["backend: resume text, analyses", "web: the SPA itself"])
@@ -258,21 +258,6 @@ edge("e_model", "worker", "genai", "two calls", PURPLE, "0.5", "1", "0.5", "0")
 edge("e_blob", "worker", "store", "analysis", TEAL, "0", "0.75", "1", "0.5")
 edge("e_score", "worker", "nosql", "score + status", TEAL, "0.5", "0", "0.5", "1")
 
-# The SPA is served from the same Object Storage the worker writes into.
-edge("e_spa", "store", "browser", "serves the SPA", GREY, "0", "0.5", "0.5", "1",
-     dot=True, width="2")
-
-# ==============================================================================
-# Annotations — the two facts a reader most needs and cannot infer
-# ==============================================================================
-
-note("n_async", 60, 545, 275, 120,
-     "POST /jobs returns before any scoring happens — the gateway will not "
-     "hold a request open for a page fetch plus two model calls.")
-
-note("n_batch", 60, 690, 275, 140,
-     "Connector Hub has no invoke-on-arrival. batch_time_in_sec cannot go "
-     "below 60, so batch_size_in_num = 1 is what makes delivery prompt.")
 
 # ==============================================================================
 # Emit

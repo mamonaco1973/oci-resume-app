@@ -14,6 +14,11 @@
 # Redirected CLI output — never belongs in the repo
 out.log
 
+# draw.io autosave/backup scratch files (.$name.drawio.bkp, *.dtmp)
+.$*
+*.bkp
+*.dtmp
+
 # Local environment overrides (OCI_DOMAIN_NAME, OCI_SIGNUP_PROFILE_NAME, etc.)
 env.sh
 
