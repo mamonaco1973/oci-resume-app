@@ -114,9 +114,49 @@ export TF_VAR_region="$REGION"
 export TF_VAR_domain_display_name="${OCI_DOMAIN_NAME}"
 echo "NOTE: Identity domain - ${TF_VAR_domain_display_name}"
 
-# Generative AI model the worker scores with (see genai-config.sh).
-export TF_VAR_genai_model_id="${GENAI_MODEL_ID}"
-echo "NOTE: Gen AI model    - ${TF_VAR_genai_model_id}"
+# ------------------------------------------------------------------------------
+# Resolve the Generative AI model name to its OCID
+# ------------------------------------------------------------------------------
+# The inference endpoint's OnDemandServingMode takes a model OCID, not a display
+# name — passing the name fails at scoring time with a 404 "Entity with key
+# <name> not found", long after a successful deploy.
+#
+# The OCID is resolved here rather than hardcoded because base-model OCIDs are
+# REGION-SPECIFIC. A literal ocid1.generativeaimodel.oc1.iad.… in config would
+# work in Ashburn and 404 everywhere else, which is exactly the kind of thing
+# that makes a tutorial fail for everyone who is not the author.
+#
+# genai-config.sh therefore keeps the human-readable name, and this turns it
+# into whatever OCID that name has in the region being deployed to.
+# ------------------------------------------------------------------------------
+
+echo "NOTE: Resolving Gen AI model '${GENAI_MODEL_ID}' to an OCID..."
+
+GENAI_MODEL_OCID=$(oci generative-ai model-collection list-models \
+  --compartment-id "${TENANCY_OCID}" \
+  --output json 2>/dev/null \
+  | jq -r --arg m "${GENAI_MODEL_ID}" '
+      [ .data.items[]?
+        | select(."display-name" == $m)
+        | select(.capabilities[]? == "CHAT")
+        | select(."time-on-demand-retired" == null)
+        | .id
+      ] | first // empty' 2>/dev/null || echo "")
+
+if [ -z "${GENAI_MODEL_OCID}" ]; then
+  echo "ERROR: Could not resolve '${GENAI_MODEL_ID}' to an on-demand CHAT model"
+  echo "ERROR: in ${REGION}. List what is currently available with:"
+  echo "ERROR:   oci generative-ai model-collection list-models \\"
+  echo "ERROR:     --compartment-id ${TENANCY_OCID} --output json | jq -r '"
+  echo "ERROR:     .data.items[] | select(.capabilities[]? == \"CHAT\")"
+  echo "ERROR:     | select(.\"time-on-demand-retired\" == null) | .\"display-name\"'"
+  echo "ERROR: Then update GENAI_MODEL_ID in genai-config.sh."
+  exit 1
+fi
+
+export TF_VAR_genai_model_id="${GENAI_MODEL_OCID}"
+echo "NOTE: Gen AI model    - ${GENAI_MODEL_ID}"
+echo "NOTE: Gen AI model id - ${GENAI_MODEL_OCID}"
 
 # Export OCIR vars for 02-docker/build.sh.
 export OCIR_HOST OCIR_TOKEN OCIR_USERNAME NAMESPACE

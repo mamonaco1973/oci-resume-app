@@ -62,7 +62,10 @@ echo "NOTE: Checking Generative AI model availability - ${GENAI_MODEL_ID}"
 
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
 
-GENAI_MATCH=$(oci generative-ai model-collection list-models \
+# Resolve to the OCID rather than just counting matches: the OCID is what
+# apply.sh actually passes to Terraform, so checking for its presence here is
+# checking the same thing the deploy depends on.
+GENAI_MODEL_OCID=$(oci generative-ai model-collection list-models \
   --compartment-id "${TENANCY_OCID}" \
   --output json 2>/dev/null \
   | jq -r --arg m "${GENAI_MODEL_ID}" '
@@ -70,9 +73,10 @@ GENAI_MATCH=$(oci generative-ai model-collection list-models \
         | select(."display-name" == $m)
         | select(.capabilities[]? == "CHAT")
         | select(."time-on-demand-retired" == null)
-      ] | length' 2>/dev/null || echo "0")
+        | .id
+      ] | first // empty' 2>/dev/null || echo "")
 
-if [[ "${GENAI_MATCH}" == "0" ]]; then
+if [[ -z "${GENAI_MODEL_OCID}" ]]; then
   echo "ERROR: Model '${GENAI_MODEL_ID}' is not available for on-demand CHAT"
   echo "ERROR: in this region, or has been retired. List what is live with:"
   echo "ERROR:   oci generative-ai model-collection list-models \\"
@@ -85,3 +89,4 @@ if [[ "${GENAI_MATCH}" == "0" ]]; then
 fi
 
 echo "NOTE: Generative AI model is available on demand."
+echo "NOTE: Model OCID - ${GENAI_MODEL_OCID}"

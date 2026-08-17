@@ -58,8 +58,16 @@ variable "image_path" {
 # upstream. Meta's entries carry no retirement date and are open-weight.
 # Re-check availability before a fresh deploy:
 #   oci generative-ai model-collection list-models --compartment-id <tenancy>
+#
+# This is the model OCID, not the display name. OnDemandServingMode looks the
+# model up by key and a display name 404s at inference time — after a deploy
+# that looked entirely successful. apply.sh resolves the readable name in
+# genai-config.sh into the OCID it has in the target region.
+#
+# No default: base-model OCIDs differ per region, so any literal here would be
+# silently wrong for anyone deploying elsewhere. Failing at plan time with
+# "no value for required variable" is far better than a 404 during scoring.
 variable "genai_model_id" {
-  description = "OCI Generative AI on-demand chat model display name"
+  description = "OCID of the OCI Generative AI on-demand chat model"
   type        = string
-  default     = "meta.llama-4-scout-17b-16e-instruct"
 }

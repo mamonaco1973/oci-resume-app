@@ -142,6 +142,27 @@ export async function getUsage() {
   return apiRequest("/usage", { method: "GET" });
 }
 
+/* -------------------------------------------------------------------------- */
+/* Function: heartbeat                                                         */
+/* Purpose: Keep-alive ping. Deliberately bypasses apiRequest.                 */
+/*                                                                             */
+/* apiRequest clears tokens and redirects to the sign-in page on a 401. That   */
+/* is right for a user action, but wrong for a background timer: an expired    */
+/* token would silently throw the user out of the app from a tick they never   */
+/* asked for. This swallows every failure instead — a missed ping just means   */
+/* the next real request pays a cold start.                                    */
+/* -------------------------------------------------------------------------- */
+export async function heartbeat() {
+  try {
+    await fetch(`${API_BASE_URL}/heartbeat`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${getIdToken()}` }
+    });
+  } catch (_) {
+    /* Intentionally ignored — best-effort warmth, never user-visible. */
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Attachments API
 // -----------------------------------------------------------------------------

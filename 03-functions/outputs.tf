@@ -22,7 +22,7 @@ output "nosql_table_name" {
 }
 
 output "genai_model_id" {
-  description = "Generative AI model the worker scores with"
+  description = "OCID of the Generative AI model the worker scores with"
   value       = var.genai_model_id
 }
 

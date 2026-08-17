@@ -48,7 +48,19 @@ log = logging.getLogger(__name__)
 # an unknown-route 404 rather than a silent mis-dispatch.
 # ---------------------------------------------------------------------------
 
+def _heartbeat(req):
+    """Cheapest possible handler — proves the container is up, nothing else.
+
+    Deliberately does no NoSQL, Object Storage or Queue work, and does not even
+    require the caller's identity. Its only job is to be an invocation, so the
+    platform keeps this container alive between real requests.
+    """
+    return 200, {"status": "ok"}
+
+
 ROUTES = {
+    "heartbeat":            _heartbeat,
+
     "register":             users.register_user,
     "usage":                users.get_usage,
 

@@ -5,9 +5,20 @@
 # destroy.sh and check_env.sh so every script and the worker Function agree on
 # which model is in play.
 #
+# This is the model's DISPLAY NAME, not its OCID. apply.sh resolves it to the
+# OCID that name has in the target region and passes THAT to Terraform, because
+# the inference endpoint's OnDemandServingMode looks a model up by key: give it
+# a display name and scoring fails with a 404 "Entity with key <name> not
+# found", long after a deploy that reported success.
+#
+# The name is what lives in config rather than the OCID because base-model
+# OCIDs are region-specific — a literal ocid1.generativeaimodel.oc1.iad.… would
+# work in Ashburn and 404 for anyone deploying anywhere else.
+#
 # GENAI_MODEL_ID flows to:
-#   - check_env.sh  pre-flight availability probe
-#   - 03-functions  worker Function config, via TF_VAR_genai_model_id
+#   - check_env.sh  pre-flight availability probe (resolves and reports the OCID)
+#   - apply.sh      resolved to an OCID, exported as TF_VAR_genai_model_id
+#   - validate.sh   readable name for the summary output
 #
 # ------------------------------------------------------------------------------
 # Why Llama 4 and not the obvious choice

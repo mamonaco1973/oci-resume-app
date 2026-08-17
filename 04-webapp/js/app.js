@@ -5,7 +5,8 @@
 /* ========================================================================== */
 
 import { createJob, listResumes, register, getUsage,
-         listFolders, createFolder, deleteFolder } from "./api.js";
+         listFolders, createFolder, deleteFolder,
+         heartbeat }                               from "./api.js";
 import { loadJobs, hasPendingJobs,
          setFolderFilter, setStatusFilter,
          setSearchFilter }                         from "./jobs.js";
@@ -55,9 +56,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadFolders();
     await refreshApp();
     await updateTokenUsage();
+    startKeepWarm();
   } catch (error) {
     console.error("Failed to load dashboard:", error);
   }
+});
+
+/* ========================================================================== */
+/* Keep-warm                                                                   */
+/*                                                                             */
+/* OCI Functions scale to zero, so the first request after an idle spell pays  */
+/* a container start plus an image pull. Pinging /heartbeat on a timer keeps   */
+/* the api Function resident for as long as someone has the app open, which    */
+/* is when responsiveness is actually being judged.                            */
+/*                                                                             */
+/* Scope note: this warms the API function only. The worker is invoked by      */
+/* Connector Hub off the queue, never by the gateway, so nothing here can      */
+/* reach it — the first scored job after an idle period still pays the         */
+/* worker's cold start, and that container is the heavier of the two.          */
+/* ========================================================================== */
+
+/* 60s matches oci-identity-app. Well inside any plausible idle-eviction
+   window, and cheap: 60 invocations an hour of a handler that does no I/O. */
+const KEEP_WARM_INTERVAL_MS = 60000;
+
+let keepWarmTimer = null;
+
+/* -------------------------------------------------------------------------- */
+/* Function: startKeepWarm                                                     */
+/* Purpose: Begin pinging /heartbeat while the user is signed in.             */
+/* -------------------------------------------------------------------------- */
+function startKeepWarm() {
+  if (keepWarmTimer) return;
+
+  keepWarmTimer = setInterval(() => {
+    /* Stop as soon as the session ends rather than firing 401s forever. */
+    if (!isLoggedIn()) {
+      stopKeepWarm();
+      return;
+    }
+
+    /* Skip while the tab is hidden. A backgrounded tab is not waiting on
+       anything, and browsers throttle timers there anyway, so pinging would
+       burn invocations without buying responsiveness anyone can perceive. */
+    if (document.hidden) return;
+
+    heartbeat();
+  }, KEEP_WARM_INTERVAL_MS);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Function: stopKeepWarm                                                      */
+/* Purpose: Cancel the keep-warm timer.                                       */
+/* -------------------------------------------------------------------------- */
+function stopKeepWarm() {
+  if (keepWarmTimer) {
+    clearInterval(keepWarmTimer);
+    keepWarmTimer = null;
+  }
+}
+
+/* Returning to a foregrounded tab is exactly when the next real request is
+   about to happen, so warm it immediately rather than waiting out the tick. */
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && isLoggedIn()) heartbeat();
 });
 
 /* -------------------------------------------------------------------------- */

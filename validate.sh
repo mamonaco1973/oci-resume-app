@@ -33,7 +33,10 @@ if [[ -z "${API_BASE}" ]]; then
 fi
 WEBAPP_URL=$(cd 04-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
 QUEUE_ID=$(cd 03-functions && terraform output -raw queue_id 2>/dev/null || echo "")
-GENAI_MODEL=$(cd 03-functions && terraform output -raw genai_model_id 2>/dev/null || echo "unknown")
+# The Terraform output is the model OCID, which is unreadable in a summary.
+# Source the config for the name the OCID was resolved from.
+source ./genai-config.sh 2>/dev/null || true
+GENAI_MODEL="${GENAI_MODEL_ID:-unknown}"
 
 echo "NOTE: API Gateway URL - ${API_BASE}"
 

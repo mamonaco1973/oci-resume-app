@@ -125,6 +125,39 @@ resource "oci_apigateway_deployment" "resume" {
       }
     }
 
+    # ------------------------------------------------------------------------
+    # GET /heartbeat — cold-start keep-alive
+    # ------------------------------------------------------------------------
+    # The SPA pings this on a timer while signed in so the api Function stays
+    # warm between user actions. The handler returns immediately without
+    # touching NoSQL or Object Storage — polling a real endpoint like /jobs
+    # would work too, but would cost a query every minute for nothing.
+    #
+    # Authenticated like every other route. It only needs to run while someone
+    # has the app open, so there is no reason to expose an unauthenticated
+    # endpoint that anyone could use to keep the function spinning.
+    # ------------------------------------------------------------------------
+    routes {
+      path    = "/heartbeat"
+      methods = ["GET"]
+      backend {
+        type        = "ORACLE_FUNCTIONS_BACKEND"
+        function_id = oci_functions_function.api.id
+      }
+      request_policies {
+        authorization { type = "AUTHENTICATION_ONLY" }
+        header_transformations {
+          set_headers {
+            items {
+              name      = "X-Route"
+              values    = ["heartbeat"]
+              if_exists = "OVERWRITE"
+            }
+          }
+        }
+      }
+    }
+
     routes {
       path    = "/usage"
       methods = ["GET"]
