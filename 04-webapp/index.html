@@ -5,6 +5,13 @@
   <title>My Jobs</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <!-- Declared explicitly, and relatively. Browsers otherwise request
+       /favicon.ico at the ORIGIN root, which on Object Storage is
+       objectstorage.<region>.oraclecloud.com/favicon.ico — not this bucket.
+       The AWS build needs no such tag because its SPA sits at the
+       CloudFront root, where the implicit request lands correctly. -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
   <link rel="stylesheet" href="css/styles.css">
 </head>
 
