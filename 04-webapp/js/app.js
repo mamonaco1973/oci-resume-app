@@ -43,9 +43,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         "To request access, email mamonaco1973@gmail.com.",
         { title: "Registration Closed" }
       );
-      localStorage.removeItem("id_token");
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+      /* No manual token wipe here — getLogoutUrl() needs the id_token to build
+         id_token_hint, and clears storage itself once it has read it. */
       window.location.href = getLogoutUrl();
       return;
     }
@@ -402,11 +401,11 @@ document
   // ---------------------------------------------------------------------------
 
   btnSignOut?.addEventListener("click", () => {
-  localStorage.removeItem("id_token");
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("refresh_token");
-
-  window.location.href = getLogoutUrl();
+    /* getLogoutUrl() reads the id_token for id_token_hint, then clears storage.
+       Wiping tokens here first would strip the hint and the domain rejects the
+       request with "Invalid logout request". */
+    stopKeepWarm();
+    window.location.href = getLogoutUrl();
   });
 
 }

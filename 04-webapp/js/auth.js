@@ -224,15 +224,27 @@ export function getPostLoginRedirectUrl() {
   return `${WEB_BASE}/index.html`;
 }
 
-/* Tokens are cleared locally before redirecting so the app is signed out even
-   if the domain's logout endpoint is unreachable. */
+/* Identity Domains implements OIDC RP-initiated logout, which identifies the
+   session by `id_token_hint`. It does NOT accept `client_id` here — that is the
+   Cognito shape (client_id + logout_uri) and it is rejected outright with
+   "Invalid logout request".
+
+   Order matters: the hint is read BEFORE clearing local storage. Wiping tokens
+   first leaves nothing to identify the session with, producing the same
+   rejection even once the parameter name is right.
+
+   Tokens are still cleared before returning, so the app is signed out locally
+   even if the domain endpoint is unreachable or the redirect never completes. */
 export function getLogoutUrl() {
-  clearTokens();
+  const idToken = getIdToken();
 
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
     post_logout_redirect_uri: `${WEB_BASE}/index.html`
   });
+
+  if (idToken) params.set("id_token_hint", idToken);
+
+  clearTokens();
 
   return `${DOMAIN_URL}/oauth2/v1/userlogout?${params.toString()}`;
 }
