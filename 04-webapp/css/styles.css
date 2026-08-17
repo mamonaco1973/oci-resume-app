@@ -338,19 +338,32 @@ tr:hover {
 
 /* display:inline-flex is only applied when .hidden is absent — avoids
    the ID selector overriding .hidden { display:none } on this element */
+/* This indicator lives in the dark gradient header, where the inherited #555
+   was effectively invisible — every sibling there (h1, icon buttons) was
+   already given a light colour and this one was missed.
+
+   White text alone still would not be enough: at the light end of the header
+   gradient (#4f9cf9) white 12px text lands near 2.8:1, under the 4.5:1 AA
+   threshold for small text. The translucent dark pill holds the background
+   steady wherever the gradient happens to sit behind it, taking the same text
+   to roughly 5.3:1 — and it visually groups the spinner and countdown into one
+   control alongside the icon buttons. */
 #auto-refresh-indicator:not(.hidden) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.35);
   font-size: 12px;
-  color: #555;
+  color: #ffffff;
 }
 
 #auto-refresh-indicator .spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid #ccc;
-  border-top-color: #1f4fb2;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
   border-radius: 50%;
   animation: spin 0.9s linear infinite;
 }
