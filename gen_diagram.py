@@ -234,7 +234,7 @@ card("worker", 1390, 630, 400, 140, PURPLE, "code",
      "Function: resume-worker", ["300s timeout, 2 GB", "scrape, extract, score"])
 
 card("genai", 1390, 855, 400, 140, PURPLE, "sparkles",
-     "OCI Generative AI", ["xai.grok-4.3", "extract fields, then score"])
+     "OCI Generative AI", ["xai.grok-4.20-non-reasoning", "extract fields, then score"])
 
 card("store", 900, 855, 400, 140, TEAL, "drive",
      "Object Storage", ["backend: resume text, analyses", "web: the SPA itself"])

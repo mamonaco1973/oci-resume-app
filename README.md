@@ -142,7 +142,17 @@ gateway rejects unauthenticated calls before any function runs.
 ## Choosing the model
 
 Model selection lives in **`genai-config.sh`**, the single source of truth shared
-by the deploy scripts and Terraform. The default is **`xai.grok-4.3`**.
+by the deploy scripts and Terraform. The default is
+**`xai.grok-4.20-non-reasoning`**.
+
+The **non-reasoning** variant is deliberate. xAI publishes reasoning and
+non-reasoning builds of the same model; reasoning ones spend tokens and
+wall-clock thinking before answering. Neither call here benefits from that —
+one extracts fields from scraped text, the other scores against a fixed rubric
+with a fixed output shape. It also keeps the four-cloud comparison fair: AWS
+runs `claude-haiku-4-5` and GCP runs `gemini-2.5-flash-lite`, both the fast tier
+of their family, so pitting a reasoning model against them would measure the
+model choice rather than the platform.
 
 **Do not trust the model catalog.** `list-models` is the control plane and
 returns every model the region knows about, including ones served only through a
@@ -164,7 +174,7 @@ not read the catalog:
 
 ```bash
 python3 probe_genai.py                        # probe every CHAT model
-python3 probe_genai.py --check xai.grok-4.3   # verify one; exit 0 / 1
+python3 probe_genai.py --check xai.grok-4.20-non-reasoning   # exit 0 / 1
 ```
 
 `apply.sh` reads the Phase 3 outputs, renders `04-webapp/js/config.js` from its
