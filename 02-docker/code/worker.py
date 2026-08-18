@@ -21,6 +21,7 @@
 
 import json
 import logging
+import random
 import re
 import time
 import urllib.request
@@ -31,6 +32,7 @@ import nosql_util
 import os_util
 from common import COMPARTMENT_ID, SIGNER, user_pk, utc_now
 
+from oci.exceptions import ServiceError
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import (
     ChatDetails,
@@ -76,6 +78,12 @@ _genai = GenerativeAiInferenceClient(
 # =================================================================================
 # Constants
 # =================================================================================
+
+# Throttling: OCI Generative AI caps concurrent on-demand inference per model,
+# and several connectors scoring at once will hit it. Sleeps total ~45s worst
+# case, which leaves room for two model calls inside the 300s function timeout.
+THROTTLE_MAX_ATTEMPTS = 5
+THROTTLE_BASE_DELAY   = 3.0
 
 MAX_SOURCE_TEXT_CHARS = 120000
 MIN_JOB_TEXT_CHARS = 100
@@ -416,6 +424,55 @@ def _extract_usage(chat_response, prompt_text, output_text):
     return len(prompt_text) // 4, len(output_text) // 4
 
 
+def _chat_with_retry(details, label):
+    """Call chat(), retrying while the service throttles us.
+
+    OCI Generative AI enforces a per-model service limit on on-demand
+    inference, and it is low enough that a handful of concurrent workers trip
+    it — which is exactly what raising worker_concurrency does. The service
+    returns 429 with "service limit for this model has been reached".
+
+    That is transient and worth waiting out: without a retry a throttled job
+    lands in Error permanently, so the user loses work purely because a sibling
+    job happened to be scoring at the same moment.
+
+    Backoff is exponential WITH JITTER because the workers collide by
+    construction — several were started at once by separate connectors, so a
+    fixed schedule would have them all retry in lockstep and collide again.
+
+    The budget is bounded deliberately: four sleeps of up to ~45s total, with
+    two model calls per job, still fits inside the 300s function timeout
+    alongside the calls themselves.
+
+    Args:
+        details : Fully-built ChatDetails.
+        label   : Short tag used in log lines.
+
+    Returns:
+        The SDK chat response.
+
+    Raises:
+        ServiceError: The last 429 if every attempt is throttled, or any
+        non-429 error immediately.
+    """
+    delay = THROTTLE_BASE_DELAY
+
+    for attempt in range(1, THROTTLE_MAX_ATTEMPTS + 1):
+        try:
+            return _genai.chat(details)
+        except ServiceError as exc:
+            if exc.status != 429 or attempt == THROTTLE_MAX_ATTEMPTS:
+                raise
+
+            wait = delay + random.uniform(0, delay / 2)
+            logger.warning(
+                "GenAI %s throttled (429), attempt %s/%s — retrying in %.1fs",
+                label, attempt, THROTTLE_MAX_ATTEMPTS, wait,
+            )
+            time.sleep(wait)
+            delay *= 2
+
+
 def _chat(prompt, max_tokens, user_id=None, label="call"):
     """Send one prompt to the configured model and return its text.
 
@@ -449,7 +506,7 @@ def _chat(prompt, max_tokens, user_id=None, label="call"):
     )
 
     t0 = time.time()
-    resp = _genai.chat(details)
+    resp = _chat_with_retry(details, label)
     elapsed = time.time() - t0
 
     chat_response = resp.data.chat_response
@@ -566,6 +623,16 @@ def score_job_against_resume(user_id, job_id, track_user_id=None):
 
     try:
         scored = score_resume(resume_text, job_text, user_id=track_user_id)
+    except ServiceError as exc:
+        # Surface throttling in words the user can act on. The raw SDK dict
+        # names a service limit but buries it in 300 characters of request ids.
+        if exc.status == 429:
+            raise RuntimeError(
+                "Generative AI is at its service limit for this model. "
+                "Too many jobs scoring at once — try again shortly, or lower "
+                "worker_concurrency."
+            ) from exc
+        raise RuntimeError(f"Failed to score resume against job: {exc}") from exc
     except Exception as exc:
         raise RuntimeError(f"Failed to score resume against job: {exc}") from exc
 
@@ -655,6 +722,16 @@ def process_url_job(user_id, job_id, job_url):
                 "Extracted job description is too short",
             )
             return
+    except ServiceError as exc:
+        logger.exception("Failed to extract job fields. job_id=%s", job_id)
+        update_job_status(
+            user_id, job_id, "Error",
+            "Generative AI is at its service limit for this model. Too many "
+            "jobs scoring at once — try again shortly."
+            if exc.status == 429 else
+            safe_status_message(f"Failed to extract job fields: {exc}"),
+        )
+        return
     except Exception as exc:
         logger.exception("Failed to extract job fields. job_id=%s", job_id)
         update_job_status(
@@ -742,6 +819,16 @@ def process_raw_text_job(user_id, job_id):
         # floor — a truncated rewrite would silently degrade the scoring input.
         if extracted_job_text and len(extracted_job_text) >= MIN_JOB_TEXT_CHARS:
             job_text = extracted_job_text
+    except ServiceError as exc:
+        logger.exception("Failed to extract job fields. job_id=%s", job_id)
+        update_job_status(
+            user_id, job_id, "Error",
+            "Generative AI is at its service limit for this model. Too many "
+            "jobs scoring at once — try again shortly."
+            if exc.status == 429 else
+            safe_status_message(f"Failed to extract job fields: {exc}"),
+        )
+        return
     except Exception as exc:
         logger.exception("Failed to extract job fields. job_id=%s", job_id)
         update_job_status(
