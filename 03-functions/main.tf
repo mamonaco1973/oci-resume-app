@@ -71,3 +71,24 @@ variable "genai_model_id" {
   description = "OCID of the OCI Generative AI on-demand chat model"
   type        = string
 }
+
+# How many Connector Hub connectors drain the scoring queue.
+#
+# Each connector invokes its target Function serially, so this IS the worker
+# concurrency: 4 means at most 4 jobs scoring simultaneously. Oracle's own
+# guidance for parallel invocation is to run multiple connectors against one
+# queue — there is no autoscaling equivalent, so the number is chosen here
+# rather than discovered at runtime.
+#
+# 4 is enough to demonstrate real parallelism without provisioning a fleet.
+# Raise it for throughput; each connector is an independent poller.
+variable "worker_concurrency" {
+  description = "Number of Connector Hub connectors draining the queue (= max concurrent scoring jobs)"
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.worker_concurrency >= 1 && var.worker_concurrency <= 20
+    error_message = "worker_concurrency must be between 1 and 20."
+  }
+}

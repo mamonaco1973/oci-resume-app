@@ -209,20 +209,31 @@ if [[ -n "${QUEUE_ID}" ]]; then
   fi
 fi
 
-echo "NOTE: Verifying the Connector Hub service connector is ACTIVE..."
+# ------------------------------------------------------------------------------
+# Connector Hub — count the ACTIVE connectors, do not just check one
+# ------------------------------------------------------------------------------
+# A connector invokes its Function serially, so the NUMBER of active connectors
+# IS the scoring concurrency. Checking a single one by exact name would pass
+# while three of four were broken, and the only symptom would be jobs quietly
+# scoring one at a time.
+# ------------------------------------------------------------------------------
+echo "NOTE: Verifying Connector Hub connectors are ACTIVE..."
 COMPARTMENT_ID=$(cd 03-functions && terraform output -raw compartment_id 2>/dev/null || echo "")
-if [[ -n "${COMPARTMENT_ID}" ]]; then
-  SCSTATE=$(oci_state oci sch service-connector list \
-    --compartment-id "${COMPARTMENT_ID}" \
-    --display-name "resume-queue-to-worker" \
-    --query 'data.items[0]."lifecycle-state"' --raw-output) || SCSTATE="UNAVAILABLE"
+EXPECTED=$(cd 03-functions && terraform output -raw worker_concurrency 2>/dev/null || echo "")
 
-  if [[ "${SCSTATE}" == "UNAVAILABLE" ]]; then
+if [[ -n "${COMPARTMENT_ID}" ]]; then
+  SCACTIVE=$(oci_state oci sch service-connector list     --compartment-id "${COMPARTMENT_ID}"     --query 'length(data.items[?starts_with("display-name", `resume-queue-to-worker`) && "lifecycle-state" == `ACTIVE`])'     --raw-output) || SCACTIVE="UNAVAILABLE"
+
+  if [[ "${SCACTIVE}" == "UNAVAILABLE" ]]; then
     echo "NOTE: Connector state not checked (CLI lacks the sch command) — skipping."
   else
-    echo "NOTE: Connector state - ${SCSTATE}"
-    if [[ "${SCSTATE}" != "ACTIVE" ]]; then
-      echo "WARN: Connector is not ACTIVE — jobs will sit at 'submitted' forever."
+    echo "NOTE: Active connectors - ${SCACTIVE}${EXPECTED:+ of ${EXPECTED}}"
+
+    if [[ "${SCACTIVE}" == "0" ]]; then
+      echo "WARN: No connector is ACTIVE — jobs will sit at 'submitted' forever."
+    elif [[ -n "${EXPECTED}" && "${SCACTIVE}" != "${EXPECTED}" ]]; then
+      echo "WARN: Fewer connectors than expected — scoring runs at reduced"
+      echo "WARN: concurrency (each connector processes one job at a time)."
     fi
   fi
 fi

@@ -228,7 +228,7 @@ card("queue", 440, 630, 400, 140, AMBER, "layers",
      "OCI Queue", ["resume-job-requests", "visibility 900s"])
 
 card("sch", 900, 630, 400, 140, AMBER, "share",
-     "Connector Hub", ["polls and flushes a batch", "batch_size_in_num = 1"])
+     "Connector Hub", ["x4 — one connector is serial", "batch_size_in_num = 1"])
 
 card("worker", 1390, 630, 400, 140, PURPLE, "code",
      "Function: resume-worker", ["300s timeout, 2 GB", "scrape, extract, score"])

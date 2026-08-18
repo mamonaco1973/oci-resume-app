@@ -1,5 +1,5 @@
 # ================================================================================
-# Connector Hub — Queue source -> worker Function target
+# Connector Hub — Queue source -> worker Function target (xN, see below)
 # ================================================================================
 # OCI's bridge from a queue to compute, and the piece with no real equivalent on
 # the other three clouds.  Note what it is NOT: there is no "invoke on message
@@ -15,9 +15,37 @@
 # broken when it is merely batching.
 # ================================================================================
 
+# ------------------------------------------------------------------------------
+# WHY THERE ARE SEVERAL OF THESE
+# ------------------------------------------------------------------------------
+# A single connector invokes its target Function SERIALLY. Oracle's own docs:
+#
+#   "A connector invokes Functions in a serial synchronous manner. Functions are
+#    invoked synchronously with 6 MB of data per invocation. Such invocations are
+#    handled sequentially."
+#
+# So one connector is one worker. Submit two jobs and the second waits for the
+# first to finish scoring — visibly different from SQS -> Lambda, Pub/Sub ->
+# Eventarc and Service Bus -> Functions, all of which fan out on their own.
+#
+# batch_size_in_num does NOT help: it controls how many messages ride along in
+# one invocation, not how many invocations are in flight. Raising it would just
+# make one worker chew through a batch sequentially, and would also delay a lone
+# job until the batch filled or the 60s timer expired.
+#
+# Oracle's recommended workaround is to point MULTIPLE connectors at the same
+# queue, which is what count does here. The queue's visibility timeout stops two
+# connectors picking up the same message.
+#
+# The cost of this design is that concurrency is fixed at deploy time: four
+# connectors means at most four jobs scoring at once, whether one was submitted
+# or forty. There is no scale-to-load equivalent.
+# ------------------------------------------------------------------------------
 resource "oci_sch_service_connector" "jobs" {
+  count = var.worker_concurrency
+
   compartment_id = var.compartment_id
-  display_name   = "resume-queue-to-worker"
+  display_name   = "resume-queue-to-worker-${count.index + 1}"
   description    = "Drains scoring requests from the Queue into the worker Function"
 
   # ------------------------------------------------------------------------------

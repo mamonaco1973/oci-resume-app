@@ -48,12 +48,25 @@ seconds. That is perfectly adequate for a workload measured in tens of seconds;
 the gap against an event-driven trigger is irrelevant here. The default is the
 problem, not the mechanism.
 
+The **second** difference is not a default, and matters more. A connector
+invokes its Function *serially* — Oracle's documentation states that invocations
+"are handled sequentially". One connector is one worker, so submitting two jobs
+scores them one after the other while AWS, GCP and Azure all process them at
+once. `batch_size_in_num` does not help: it controls messages per invocation,
+not invocations in flight.
+
+Oracle's recommended fix is to point **multiple connectors** at the same queue,
+which is what `worker_concurrency` (default 4) does here. The consequence is
+that scoring concurrency is chosen at deploy time rather than scaled to load —
+four connectors means at most four jobs at once, whether one was submitted or
+forty.
+
 ## Key capabilities demonstrated
 
 1. **Asynchronous AI pipeline** – Queue plus Connector Hub decouples a slow
    inference workload from a request/response API that could never contain it.
-2. **OCI Generative AI** – On-demand inference against Meta Llama 4, with
-   per-user token accounting and a lifetime cap enforced before work is accepted.
+2. **OCI Generative AI** – On-demand inference against xAI Grok, with per-user
+   token accounting and a lifetime cap enforced before work is accepted.
 3. **Serverless compute** – Two OCI Functions from one container image, selected
    by an environment variable: a short-timeout API function and a long-timeout
    worker.
@@ -78,7 +91,8 @@ API Gateway — resume-gateway
 Function: resume-api (60s)
    │  POST /jobs → snapshot resume → enqueue → return "submitted"
    ▼
-OCI Queue → Connector Hub (batch_size_in_num = 1)
+OCI Queue → Connector Hub x4 (batch_size_in_num = 1)
+   │  4 connectors: one connector invokes its Function SERIALLY
    ▼
 Function: resume-worker (300s, 2 GB)
    │  scrape posting → Gen AI extract fields → Gen AI score
@@ -118,49 +132,29 @@ gateway rejects unauthenticated calls before any function runs.
 ## Choosing the model
 
 Model selection lives in **`genai-config.sh`**, the single source of truth shared
-by the deploy scripts and Terraform. The default is
-**`meta.llama-4-scout-17b-16e-instruct`**.
+by the deploy scripts and Terraform. The default is **`xai.grok-4.3`**.
 
-That choice is deliberate. OCI retires on-demand models aggressively — as of
-August 2026 in `us-ashburn-1` every Cohere chat model is already retired, the
-entire Grok 3/4 line retired on a single day, and there is no Anthropic model at
-all. Google Gemini is available, but Gemini 2.5 is retiring upstream. Meta's
-Llama 4 entries carry no retirement date and have open weights behind them.
+**Do not trust the model catalog.** `list-models` is the control plane and
+returns every model the region knows about, including ones served only through a
+dedicated AI cluster. A model can be `ACTIVE`, advertise the `CHAT` capability,
+carry no retirement date, resolve to a valid OCID — and still fail every call
+with `404 Entity with key <ocid> not found`. Nothing in the listing
+distinguishes the two groups.
 
-`check_env.sh` refuses to deploy if the configured model is not currently served
-on demand, so a retirement surfaces as a clear pre-flight error rather than every
-job silently failing later.
+Measured in `us-ashburn-1` by calling `chat()` against every listed CHAT model,
+on-demand works with **xAI Grok and Google Gemini only**. All Meta Llama 4, both
+OpenAI gpt-oss sizes and every Cohere model are listed but not callable, and
+there is no Anthropic model at all.
 
-To see what is live in your tenancy:
+`check_env.sh` therefore makes a real chat call rather than inspecting metadata,
+and refuses to deploy if the configured model does not answer.
 
-```bash
-T=$(grep -m1 '^tenancy' ~/.oci/config | cut -d= -f2 | tr -d ' ')
-oci generative-ai model-collection list-models --compartment-id "$T" --output json \
- | jq -r '.data.items[]
-          | select(.capabilities[]? == "CHAT")
-          | select(."time-on-demand-retired" == null)
-          | "\(.vendor)  \(."display-name")"' | sort -u
-```
-
-## Prerequisites
-
-- `oci`, `terraform`, `docker`, `jq`, `envsubst` in PATH
-- OCI CLI configured (`~/.oci/config`, API key)
-- Permission to **create identity domains** and **Identity Domain Administrator**
-  on the new domain — `setup_domain.sh` creates the domain and talks to its SCIM
-  API
-- OCI Generative AI available in your region (Ashburn is fine; `check_env.sh`
-  verifies the specific model)
-
-No console clicks are required. `setup_domain.sh` builds the domain, enables the
-signing certificate so API Gateway can read the JWKS, and creates the
-self-registration profile. End users create their own logins.
-
-## Deployment
+To see what actually answers in your tenancy — this makes real calls, it does
+not read the catalog:
 
 ```bash
-./apply.sh      # check_env → setup_domain → 01-ocir → 02-docker → 03-functions → 04-webapp
-./validate.sh   # asserts auth is enforced and the async tier is actually live
+python3 probe_genai.py                        # probe every CHAT model
+python3 probe_genai.py --check xai.grok-4.3   # verify one; exit 0 / 1
 ```
 
 `apply.sh` reads the Phase 3 outputs, renders `04-webapp/js/config.js` from its

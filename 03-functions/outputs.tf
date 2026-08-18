@@ -83,3 +83,11 @@ output "identity_domain_url" {
   description = "Identity domain base URL (authorize/token/JWKS live under this)"
   value       = data.oci_identity_domain.target.url
 }
+
+# Read by validate.sh to check that every connector actually came up ACTIVE.
+# A connector invokes its Function serially, so this number IS the maximum
+# number of jobs that can score simultaneously.
+output "worker_concurrency" {
+  description = "Connector Hub connectors draining the queue (= max concurrent scoring jobs)"
+  value       = var.worker_concurrency
+}
