@@ -46,8 +46,9 @@ Function: resume-api  (FUNCTION_TYPE=api, 60s)
    ▼
 OCI Queue: resume-job-requests
    ▼
-Connector Hub: resume-queue-to-worker-1..4  (batch_size_in_num = 1)
-   │  4 connectors because ONE connector invokes its Function SERIALLY
+Connector Hub: resume-queue-to-worker-1..2  (batch_size_in_num = 1)
+   │  2 connectors: ONE connector invokes its Function SERIALLY;
+   │  capped at 2 by the Generative AI on-demand throttle, not by compute
    ▼
 Function: resume-worker (FUNCTION_TYPE=worker, 300s, 2GB)
    │  scrape → GenAI extract → GenAI score → write analysis + score

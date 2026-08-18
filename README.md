@@ -56,10 +56,20 @@ once. `batch_size_in_num` does not help: it controls messages per invocation,
 not invocations in flight.
 
 Oracle's recommended fix is to point **multiple connectors** at the same queue,
-which is what `worker_concurrency` (default 4) does here. The consequence is
+which is what `worker_concurrency` (default 2) does here. The consequence is
 that scoring concurrency is chosen at deploy time rather than scaled to load —
-four connectors means at most four jobs at once, whether one was submitted or
+two connectors means at most two jobs at once, whether one was submitted or
 forty.
+
+Two, and not more, because of a second ceiling behind the first: Generative AI
+throttles on-demand inference per tenancy, and four connectors reliably produced
+`429 ... service limit for this model has been reached`. That limit is **not
+raisable** — OCI applies dynamic throttling, so the rate is undocumented, moves
+with system-wide demand, and has no requestable service-limit name (named limits
+exist only for dedicated AI clusters). Oracle's own advice for a 429 is
+exponential backoff, which the worker implements. So the practical concurrency
+of an async AI pipeline on OCI is set by the model service, not by anything in
+your architecture.
 
 ## Key capabilities demonstrated
 
@@ -91,8 +101,8 @@ API Gateway — resume-gateway
 Function: resume-api (60s)
    │  POST /jobs → snapshot resume → enqueue → return "submitted"
    ▼
-OCI Queue → Connector Hub x4 (batch_size_in_num = 1)
-   │  4 connectors: one connector invokes its Function SERIALLY
+OCI Queue → Connector Hub x2 (batch_size_in_num = 1)
+   │  2 connectors: one connector invokes its Function SERIALLY
    ▼
 Function: resume-worker (300s, 2 GB)
    │  scrape posting → Gen AI extract fields → Gen AI score

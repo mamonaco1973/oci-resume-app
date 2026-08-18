@@ -75,17 +75,26 @@ variable "genai_model_id" {
 # How many Connector Hub connectors drain the scoring queue.
 #
 # Each connector invokes its target Function serially, so this IS the worker
-# concurrency: 4 means at most 4 jobs scoring simultaneously. Oracle's own
+# concurrency: 2 means at most 2 jobs scoring simultaneously. Oracle's own
 # guidance for parallel invocation is to run multiple connectors against one
 # queue — there is no autoscaling equivalent, so the number is chosen here
 # rather than discovered at runtime.
 #
-# 4 is enough to demonstrate real parallelism without provisioning a fleet.
-# Raise it for throughput; each connector is an independent poller.
+# Why 2 and not more: the real ceiling is NOT compute, it is the Generative AI
+# on-demand throttle. Four connectors reliably produced 429 "service limit for
+# this model has been reached", and that limit cannot be raised — OCI applies
+# dynamic throttling, so the rate is undocumented, varies with system-wide
+# demand, and has no requestable service-limit name. Named, requestable limits
+# exist only for dedicated AI clusters.
+#
+# Two workers still show genuine parallelism while mostly staying under the
+# throttle. Workers that spend their time in backoff are worse than fewer
+# workers that actually run; the retry in worker.py absorbs what collisions
+# remain.
 variable "worker_concurrency" {
   description = "Number of Connector Hub connectors draining the queue (= max concurrent scoring jobs)"
   type        = number
-  default     = 4
+  default     = 2
 
   validation {
     condition     = var.worker_concurrency >= 1 && var.worker_concurrency <= 20
