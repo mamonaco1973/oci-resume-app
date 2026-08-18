@@ -36,32 +36,33 @@
 #     xai.grok-4.20-reasoning
 #     xai.grok-4.20-0309-reasoning
 #     xai.grok-4.20-0309-non-reasoning
-#     xai.grok-4.20-non-reasoning      <- current pick
+#     xai.grok-4.20-non-reasoning
 #     google.gemini-2.5-flash
 #     google.gemini-2.5-pro
-#     google.gemini-2.5-flash-lite
+#     google.gemini-2.5-flash-lite     <- current pick
 #
 # Everything else is listed but NOT on demand: all Meta Llama 4, both OpenAI
 # gpt-oss sizes, and every Cohere model. There is no Anthropic model at all.
 #
-# Why the NON-REASONING variant. xAI ships reasoning and non-reasoning builds of
-# the same model, and neither grok-4.3's name nor the catalog says which mode it
-# runs in. Reasoning models spend tokens and wall-clock thinking before they
-# answer — worth it for open-ended problems, wasted here: one call extracts
-# fields from scraped text, the other scores against a fixed rubric with a fixed
-# output shape. Neither benefits from deliberation.
+# Why Flash-Lite. It is a LATENCY-OPTIMISED tier, the same class as
+# claude-haiku-4-5 on AWS — which makes the four-cloud comparison a fair
+# like-for-like instead of measuring model choice. Two Grok builds (4.3, then
+# 4.20-non-reasoning) both ran slow; dropping reasoning did not fix it, which
+# points at the family rather than the reasoning setting.
 #
-# It also makes the four-cloud comparison honest. AWS uses claude-haiku-4-5 and
-# GCP uses gemini-2.5-flash-lite — both explicitly the fast/small tier of their
-# family. Scoring OCI with a reasoning model against those two would measure the
-# model choice, not the platform.
+# Note on "Gemini 2.5 is retiring": that is a GCP/Vertex lifecycle event. OCI's
+# catalog shows time-deprecated AND time-on-demand-retired null for all three
+# google.gemini-2.5-* entries — versus a hard 2026-08-15 on ten Grok entries.
+# Gemini on OCI is a separate hosting arrangement with no announced end date.
+# (gcp-resume-app pins this model and DOES need a bump — that one is real.)
 #
-# Alternative: google.gemini-2.5-flash-lite is cheaper and is the exact model
-# gcp-resume-app uses, so its prompts port verbatim — at the cost of a known
-# upstream sunset. Swapping is a one-line change here; no code edits.
+# Alternatives if this proves slow too: xai.grok-4.20-non-reasoning, or
+# google.gemini-2.5-flash (a step up from Lite). One line; no code edits — the
+# GenericChatRequest path in worker.py already works for every vendor here,
+# proven by probe_genai.py.
 #
 # Re-verify before any fresh deploy — do NOT trust the model list:
 #     python3 probe_genai.py
 # ==============================================================================
 
-export GENAI_MODEL_ID="xai.grok-4.20-non-reasoning"
+export GENAI_MODEL_ID="google.gemini-2.5-flash-lite"

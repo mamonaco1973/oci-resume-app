@@ -143,16 +143,17 @@ gateway rejects unauthenticated calls before any function runs.
 
 Model selection lives in **`genai-config.sh`**, the single source of truth shared
 by the deploy scripts and Terraform. The default is
-**`xai.grok-4.20-non-reasoning`**.
+**`google.gemini-2.5-flash-lite`**.
 
-The **non-reasoning** variant is deliberate. xAI publishes reasoning and
-non-reasoning builds of the same model; reasoning ones spend tokens and
-wall-clock thinking before answering. Neither call here benefits from that —
-one extracts fields from scraped text, the other scores against a fixed rubric
-with a fixed output shape. It also keeps the four-cloud comparison fair: AWS
-runs `claude-haiku-4-5` and GCP runs `gemini-2.5-flash-lite`, both the fast tier
-of their family, so pitting a reasoning model against them would measure the
-model choice rather than the platform.
+It is a latency-optimised tier, the same class as `claude-haiku-4-5` on AWS,
+which keeps the four-cloud comparison a fair like-for-like rather than a
+measurement of model choice. Two Grok builds were tried first and both ran
+slow — including the explicitly non-reasoning one, which suggests the family
+rather than the reasoning setting.
+
+Gemini 2.5 is being retired on **GCP**, but that is a Vertex lifecycle event:
+OCI's catalog carries no deprecation or retirement date for any
+`google.gemini-2.5-*` entry, against a hard `2026-08-15` on ten Grok entries.
 
 **Do not trust the model catalog.** `list-models` is the control plane and
 returns every model the region knows about, including ones served only through a
@@ -174,7 +175,7 @@ not read the catalog:
 
 ```bash
 python3 probe_genai.py                        # probe every CHAT model
-python3 probe_genai.py --check xai.grok-4.20-non-reasoning   # exit 0 / 1
+python3 probe_genai.py --check google.gemini-2.5-flash-lite  # exit 0 / 1
 ```
 
 `apply.sh` reads the Phase 3 outputs, renders `04-webapp/js/config.js` from its
