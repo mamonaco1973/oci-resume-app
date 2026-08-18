@@ -228,7 +228,7 @@ card("queue", 440, 630, 400, 140, AMBER, "layers",
      "OCI Queue", ["resume-job-requests", "visibility 900s"])
 
 card("sch", 900, 630, 400, 140, AMBER, "share",
-     "Connector Hub", ["x2 — one connector is serial", "throttled by GenAI, not compute"])
+     "Connector Hub", ["x4 — one connector is serial", "ceiling is the GenAI throttle"])
 
 card("worker", 1390, 630, 400, 140, PURPLE, "code",
      "Function: resume-worker", ["300s timeout, 2 GB", "scrape, extract, score"])

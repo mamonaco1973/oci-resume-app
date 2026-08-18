@@ -75,26 +75,28 @@ variable "genai_model_id" {
 # How many Connector Hub connectors drain the scoring queue.
 #
 # Each connector invokes its target Function serially, so this IS the worker
-# concurrency: 2 means at most 2 jobs scoring simultaneously. Oracle's own
+# concurrency: 4 means at most 4 jobs scoring simultaneously. Oracle's own
 # guidance for parallel invocation is to run multiple connectors against one
 # queue — there is no autoscaling equivalent, so the number is chosen here
 # rather than discovered at runtime.
 #
-# Why 2 and not more: the real ceiling is NOT compute, it is the Generative AI
-# on-demand throttle. Four connectors reliably produced 429 "service limit for
-# this model has been reached", and that limit cannot be raised — OCI applies
-# dynamic throttling, so the rate is undocumented, varies with system-wide
-# demand, and has no requestable service-limit name. Named, requestable limits
-# exist only for dedicated AI clusters.
+# How this number was arrived at, because it is empirical and not a default:
+#   4 with xai.grok-4.3            -> constant 429s from the Generative AI
+#                                     on-demand throttle; jobs appeared to
+#                                     serialize because the retry turns
+#                                     throttling into waiting
+#   2 with grok                    -> stable, but only two at a time
+#   4 with gemini-2.5-flash-lite   -> fine; the faster model holds its throttle
+#                                     slot for far less time, so contention drops
 #
-# Two workers still show genuine parallelism while mostly staying under the
-# throttle. Workers that spend their time in backoff are worse than fewer
-# workers that actually run; the retry in worker.py absorbs what collisions
-# remain.
+# The throttle cannot be queried or raised — OCI applies dynamic throttling, so
+# the rate is undocumented and moves with system-wide demand. Watch the worker
+# log for "GenAI ... throttled (429)": if those appear, lower this. Workers
+# sitting in backoff are worse than fewer workers that actually run.
 variable "worker_concurrency" {
   description = "Number of Connector Hub connectors draining the queue (= max concurrent scoring jobs)"
   type        = number
-  default     = 2
+  default     = 4
 
   validation {
     condition     = var.worker_concurrency >= 1 && var.worker_concurrency <= 20
