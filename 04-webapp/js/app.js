@@ -9,7 +9,8 @@ import { createJob, listResumes, register, getUsage,
          heartbeat }                               from "./api.js";
 import { loadJobs, hasPendingJobs,
          setFolderFilter, setStatusFilter,
-         setSearchFilter }                         from "./jobs.js";
+         setSearchFilter,
+         startLoadingNarration, stopLoadingNarration } from "./jobs.js";
 import { bindResumeHandlers, openResumeManager }   from "./resumes.js";
 import { getLoginUrl, getLogoutUrl, getSignupUrl,
          isLoggedIn }                              from "./auth.js";
@@ -33,11 +34,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  // Start narrating BEFORE the first api call. On a cold start the whole wait
+  // is spent inside register() and loadFolders(); a message driven from
+  // loadJobs() would not appear until the backend was already warm, which is
+  // precisely when it is no longer worth showing.
+  startLoadingNarration();
+
   // Check user cap before loading the dashboard
   try {
     await register();
   } catch (error) {
     if (error.message === "user_limit_reached") {
+      stopLoadingNarration();
       await showAlert(
         "This app has reached its maximum number of free users.\n\n" +
         "To request access, email mamonaco1973@gmail.com.",
@@ -58,6 +66,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     startKeepWarm();
   } catch (error) {
     console.error("Failed to load dashboard:", error);
+  } finally {
+    // Belt and braces: loadJobs() clears this on its own path, but register()
+    // or loadFolders() failing would otherwise leave the escalating message
+    // running forever over a dashboard that has given up.
+    stopLoadingNarration();
   }
 });
 

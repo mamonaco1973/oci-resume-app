@@ -96,9 +96,18 @@ const LOADING_STAGES = [
   }
 ];
 
-let loadingTimers = [];
+let loadingTimers   = [];
+let narrationActive = false;
 
-function startLoadingNarration() {
+/* Exported so app.js can start this at the FIRST api call of the page load.
+   The cold start is absorbed by register() and loadFolders(), both of which
+   run before the job list is ever fetched — narration owned solely by
+   loadJobs() therefore begins only after the backend is already warm. */
+export function startLoadingNarration() {
+  // Already running under app.js's initial load; do not restart and reset the
+  // escalation clock back to stage one.
+  if (narrationActive) return;
+
   const emptyState = document.getElementById("empty-state");
   const table      = document.getElementById("jobs-table");
   if (!emptyState) return;
@@ -107,15 +116,21 @@ function startLoadingNarration() {
   emptyState.classList.remove("hidden");
   emptyState.innerHTML = "<p>Loading your jobs…</p>";
 
-  stopLoadingNarration();
+  // Clear timers directly rather than calling stopLoadingNarration() — that
+  // also flips narrationActive to false, which would let the very next call
+  // restart the sequence and reset the escalation clock to stage one.
+  loadingTimers.forEach(clearTimeout);
   loadingTimers = LOADING_STAGES.map((stage) =>
     setTimeout(() => { emptyState.innerHTML = stage.html; }, stage.after)
   );
+
+  narrationActive = true;
 }
 
-function stopLoadingNarration() {
+export function stopLoadingNarration() {
   loadingTimers.forEach(clearTimeout);
   loadingTimers = [];
+  narrationActive = false;
 }
 
 function showLoadFailed() {
