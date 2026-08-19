@@ -27,7 +27,16 @@ if [ -f env.sh ]; then source env.sh; fi
 # ------------------------------------------------------------------------------
 
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
-REGION=$(awk -F'=' '/^region[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
+# Region the stack deploys into. Defaults to whatever ~/.oci/config says, but
+# OCI_REGION overrides it so this project can target a different region without
+# repointing the CLI for everything else on the machine.
+#
+# This project deploys to us-chicago-1 rather than the usual us-ashburn-1
+# because Generative AI model availability differs sharply by region: Chicago
+# serves Meta Llama and OpenAI gpt-oss on demand and Ashburn does not, and the
+# Grok models that ARE in both were erratic in Ashburn (measured 0.4s to 68s on
+# an identical 5-token request) while Chicago's slowest was 2.6s.
+REGION="${OCI_REGION:-us-chicago-1}"
 USER_OCID=$(awk -F'=' '/^user[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
 
 if [ -z "${OCI_COMPARTMENT_ID:-}" ]; then

@@ -29,40 +29,46 @@
 # resolve to a perfectly valid OCID — and still fail every chat() call with
 # 404 "Entity with key <ocid> not found".
 #
-# Measured in us-ashburn-1 on 2026-08-17 by calling chat() against every listed
-# CHAT model (see probe_genai.py). On-demand actually works with:
+# ------------------------------------------------------------------------------
+# AND what is callable varies BY REGION
+# ------------------------------------------------------------------------------
+# This is the finding that reshaped the project. Measured with probe_genai.py by
+# calling chat() against every listed CHAT model in each region:
 #
-#     xai.grok-4.3
-#     xai.grok-4.20-reasoning
-#     xai.grok-4.20-0309-reasoning
-#     xai.grok-4.20-0309-non-reasoning
-#     xai.grok-4.20-non-reasoning
-#     google.gemini-2.5-flash
-#     google.gemini-2.5-pro
-#     google.gemini-2.5-flash-lite     <- current pick
+#   us-ashburn-1   8 work.  No Meta, no OpenAI. Grok wildly erratic --
+#                  0.4s to 68s on an identical 5-token request, and WHICH
+#                  models were slow changed between runs.
+#   us-chicago-1  10 work.  Meta Llama AND OpenAI gpt-oss both answer.
+#                  Slowest model 2.6s. No pathological outliers.
 #
-# Everything else is listed but NOT on demand: all Meta Llama 4, both OpenAI
-# gpt-oss sizes, and every Cohere model. There is no Anthropic model at all.
+# Same tenancy, same script, same request. The app therefore deploys to
+# us-chicago-1 (see OCI_REGION in apply.sh), not the us-ashburn-1 the other OCI
+# projects in this repo use.
 #
-# Why Flash-Lite. It is a LATENCY-OPTIMISED tier, the same class as
-# claude-haiku-4-5 on AWS — which makes the four-cloud comparison a fair
-# like-for-like instead of measuring model choice. Two Grok builds (4.3, then
-# 4.20-non-reasoning) both ran slow; dropping reasoning did not fix it, which
-# points at the family rather than the reasoning setting.
+# Chicago timings at 5 max_tokens, fastest first:
+#     0.10s  openai.gpt-oss-120b      <- current pick
+#     0.10s  openai.gpt-oss-20b
+#     0.12s  meta.llama-4-maverick-17b-128e-instruct-fp8
+#     0.26s  meta.llama-4-scout-17b-16e-instruct
+#     0.38s  xai.grok-4.20-non-reasoning
+#     0.57s  google.gemini-2.5-flash
+#     0.77s  google.gemini-2.5-pro
+#     2.64s  xai.grok-4.20-reasoning
 #
-# Note on "Gemini 2.5 is retiring": that is a GCP/Vertex lifecycle event. OCI's
-# catalog shows time-deprecated AND time-on-demand-retired null for all three
-# google.gemini-2.5-* entries — versus a hard 2026-08-15 on ten Grok entries.
-# Gemini on OCI is a separate hosting arrangement with no announced end date.
-# (gcp-resume-app pins this model and DOES need a bump — that one is real.)
+# Why gpt-oss-120b: fastest measured, and open-weight -- no upstream vendor
+# retirement schedule hanging over it, unlike Gemini 2.5 (being retired on GCP)
+# or the Grok line (ten variants retired on a single day, 2026-08-15).
 #
-# Alternatives if this proves slow too: xai.grok-4.20-non-reasoning, or
-# google.gemini-2.5-flash (a step up from Lite). One line; no code edits — the
-# GenericChatRequest path in worker.py already works for every vendor here,
-# proven by probe_genai.py.
+# Swap to openai.gpt-oss-20b for lower cost and probably lower latency on long
+# generations, at some quality cost on the scoring call. One line; no code
+# changes -- the GenericChatRequest path in worker.py works for every vendor
+# here, proven by probe_genai.py.
 #
-# Re-verify before any fresh deploy — do NOT trust the model list:
-#     python3 probe_genai.py
+# NOTE: google.gemini-2.5-flash-lite does NOT exist in Chicago. Chicago carries
+# flash and pro only. Do not assume a model moves with you across regions.
+#
+# Re-verify before any fresh deploy -- do NOT trust the model list:
+#     ./probe_genai.py --region us-chicago-1
 # ==============================================================================
 
-export GENAI_MODEL_ID="google.gemini-2.5-flash-lite"
+export GENAI_MODEL_ID="openai.gpt-oss-120b"

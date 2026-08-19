@@ -193,7 +193,7 @@ cells.append('<mxCell id="frame" value="" style="rounded=0;fillColor=#FFFFFF;'
              'width="1920" height="1080" as="geometry"/></mxCell>')
 
 container("region", 360, 55, 1510, 975, NAVY,
-          "OCI Region  —  us-ashburn-1", dash=True, fsize=24, icon="cloud")
+          "OCI Region  —  us-chicago-1", dash=True, fsize=24, icon="cloud")
 
 # Two bands. The split is the point of the diagram: everything above the line
 # happens while the user waits; everything below happens after they stop.
@@ -234,7 +234,7 @@ card("worker", 1390, 630, 400, 140, PURPLE, "code",
      "Function: resume-worker", ["300s timeout, 2 GB", "scrape, extract, score"])
 
 card("genai", 1390, 855, 400, 140, PURPLE, "sparkles",
-     "OCI Generative AI", ["google.gemini-2.5-flash-lite", "extract fields, then score"])
+     "OCI Generative AI", ["openai.gpt-oss-120b", "extract fields, then score"])
 
 card("store", 900, 855, 400, 140, TEAL, "drive",
      "Object Storage", ["backend: resume text, analyses", "web: the SPA itself"])

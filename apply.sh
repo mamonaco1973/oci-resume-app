@@ -52,7 +52,16 @@ fi
 # ------------------------------------------------------------------------------
 
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
-REGION=$(awk -F'=' '/^region[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
+# Region the stack deploys into. Defaults to whatever ~/.oci/config says, but
+# OCI_REGION overrides it so this project can target a different region without
+# repointing the CLI for everything else on the machine.
+#
+# This project deploys to us-chicago-1 rather than the usual us-ashburn-1
+# because Generative AI model availability differs sharply by region: Chicago
+# serves Meta Llama and OpenAI gpt-oss on demand and Ashburn does not, and the
+# Grok models that ARE in both were erratic in Ashburn (measured 0.4s to 68s on
+# an identical 5-token request) while Chicago's slowest was 2.6s.
+REGION="${OCI_REGION:-us-chicago-1}"
 USER_OCID=$(awk -F'=' '/^user[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
 
 # Compartment falls back to tenancy root when OCI_COMPARTMENT_ID is not set.
@@ -61,7 +70,7 @@ if [ -z "${OCI_COMPARTMENT_ID:-}" ]; then
   echo "NOTE: OCI_COMPARTMENT_ID not set — using tenancy OCID as compartment."
 fi
 
-NAMESPACE=$(oci os ns get --query 'data' --raw-output)
+NAMESPACE=$(oci os ns get --region "${REGION}" --query 'data' --raw-output)
 
 # OCIR username: namespace/username-string (not OCID).
 # For federated users this returns "oracleidentitycloudservice/email@domain.com"
@@ -134,6 +143,7 @@ echo "NOTE: Resolving Gen AI model '${GENAI_MODEL_ID}' to an OCID..."
 
 GENAI_MODEL_OCID=$(oci generative-ai model-collection list-models \
   --compartment-id "${TENANCY_OCID}" \
+  --region "${REGION}" \
   --output json 2>/dev/null \
   | jq -r --arg m "${GENAI_MODEL_ID}" '
       [ .data.items[]?

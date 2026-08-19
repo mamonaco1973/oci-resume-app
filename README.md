@@ -147,18 +147,31 @@ gateway rejects unauthenticated calls before any function runs.
 ## Choosing the model
 
 Model selection lives in **`genai-config.sh`**, the single source of truth shared
-by the deploy scripts and Terraform. The default is
-**`google.gemini-2.5-flash-lite`**.
+by the deploy scripts and Terraform. The default is **`openai.gpt-oss-120b`**,
+deployed to **`us-chicago-1`**.
 
-It is a latency-optimised tier, the same class as `claude-haiku-4-5` on AWS,
-which keeps the four-cloud comparison a fair like-for-like rather than a
-measurement of model choice. Two Grok builds were tried first and both ran
-slow — including the explicitly non-reasoning one, which suggests the family
-rather than the reasoning setting.
+**What is callable varies by region, and the difference is large.** Measured by
+calling `chat()` against every listed CHAT model in each region:
 
-Gemini 2.5 is being retired on **GCP**, but that is a Vertex lifecycle event:
-OCI's catalog carries no deprecation or retirement date for any
-`google.gemini-2.5-*` entry, against a hard `2026-08-15` on ten Grok entries.
+| | us-ashburn-1 | us-chicago-1 |
+|---|---|---|
+| Models that answer | 8 | **10** |
+| Meta Llama | none | **both** |
+| OpenAI gpt-oss | none | **both** |
+| Slowest model | **67.9s** | **2.6s** |
+
+Same tenancy, same script, same request. Ashburn's Grok models ranged from 0.4s
+to 68s on an identical 5-token call, and which ones were slow changed between
+runs. Chicago showed no such outliers. That is why this project deploys to
+Chicago while the other OCI builds in this set use Ashburn.
+
+`openai.gpt-oss-120b` is the fastest measured there and is open-weight, so
+unlike Gemini 2.5 (retiring on GCP) or the Grok line (ten variants retired on a
+single day) it has no upstream vendor schedule hanging over it.
+
+Note that `google.gemini-2.5-flash-lite` does **not** exist in Chicago — it
+carries `flash` and `pro` only. Models do not necessarily move with you across
+regions.
 
 **Do not trust the model catalog.** `list-models` is the control plane and
 returns every model the region knows about, including ones served only through a

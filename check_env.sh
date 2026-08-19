@@ -58,6 +58,11 @@ echo "NOTE: OCI CLI authentication successful."
 
 source ./genai-config.sh
 
+# Same override apply.sh uses: this project may target a region other than
+# the one in ~/.oci/config, and model availability differs sharply by region.
+REGION="${OCI_REGION:-us-chicago-1}"
+echo "NOTE: Checking region - ${REGION}"
+
 echo "NOTE: Checking Generative AI model availability - ${GENAI_MODEL_ID}"
 
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
@@ -67,6 +72,7 @@ TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); p
 # checking the same thing the deploy depends on.
 GENAI_MODEL_OCID=$(oci generative-ai model-collection list-models \
   --compartment-id "${TENANCY_OCID}" \
+  --region "${REGION}" \
   --output json 2>/dev/null \
   | jq -r --arg m "${GENAI_MODEL_ID}" '
       [ .data.items[]?
@@ -94,11 +100,14 @@ echo "NOTE: Model OCID - ${GENAI_MODEL_OCID}"
 # ------------------------------------------------------------------------------
 # Prove the model actually answers an on-demand chat call
 # ------------------------------------------------------------------------------
-# Being listed proves nothing. `list-models` is the control plane and returns
-# models that are only available through a dedicated AI cluster — ACTIVE, CHAT
-# capable, no retirement date, valid OCID, and every chat() call 404s. Measured
-# in us-ashburn-1: all Meta Llama 4, both OpenAI gpt-oss sizes and every Cohere
-# model list fine and cannot be called on demand.
+# Being listed proves nothing, and what is callable varies BY REGION. The
+# control plane returns models the region knows about, not models it serves on
+# demand — ACTIVE, CHAT capable, no retirement date, valid OCID, and chat()
+# still 404s.
+#
+# Measured: in us-ashburn-1 all Meta Llama 4 and both OpenAI gpt-oss sizes are
+# listed and NOT callable; in us-chicago-1 the same models answer in ~0.1s.
+# Same catalog entry, same OCID lookup, different region.
 #
 # The only reliable test is to make the call, so probe_genai.py does exactly
 # that against the configured model. Best-effort: it needs a python with the
@@ -122,11 +131,12 @@ if [ -z "${GENAI_PY}" ]; then
   echo "WARN: Verify manually before trusting the deploy:  python3 probe_genai.py"
 else
   echo "NOTE: Probing on-demand chat with ${GENAI_MODEL_ID}..."
-  if "${GENAI_PY}" probe_genai.py --check "${GENAI_MODEL_ID}"; then
+  if "${GENAI_PY}" probe_genai.py --region "${REGION}" --check "${GENAI_MODEL_ID}"; then
     echo "NOTE: Generative AI model answers on demand."
   else
     echo "ERROR: '${GENAI_MODEL_ID}' is listed but does NOT serve on-demand chat."
-    echo "ERROR: It likely requires a dedicated AI cluster. See what does work:"
+    echo "ERROR: It may not be served in ${REGION} — availability is per-region."
+    echo "ERROR: See what does work here:"
     echo "ERROR:   ${GENAI_PY} probe_genai.py"
     echo "ERROR: Then update GENAI_MODEL_ID in genai-config.sh."
     exit 1
