@@ -23,6 +23,28 @@ provider "oci" {
   region = var.region
 }
 
+# ------------------------------------------------------------------------------
+# Home-region alias — required for tenancy-level IAM
+# ------------------------------------------------------------------------------
+# Policies and dynamic groups are GLOBAL resources with a single master copy in
+# the tenancy home region. OCI accepts reads for them anywhere but rejects
+# CREATE/UPDATE/DELETE outside home with:
+#
+#   403-NotAllowed, Please go to your home region IAD to execute CREATE,
+#   UPDATE and DELETE operations.
+#
+# This stack deploys to us-chicago-1 for Generative AI model availability, so
+# the default provider cannot write them. Everything else here is regional and
+# belongs in var.region; only the five resources in iam.tf use this alias.
+#
+# Not needed for the Identity Domains app in identity.tf — that one is issued
+# against the domain's own idcs-* endpoint, not a regional identity endpoint.
+# ------------------------------------------------------------------------------
+provider "oci" {
+  alias  = "home"
+  region = var.home_region
+}
+
 # ================================================================================
 # Variables
 # ================================================================================
@@ -39,6 +61,11 @@ variable "compartment_id" {
 
 variable "region" {
   description = "OCI region identifier (e.g., us-ashburn-1)"
+  type        = string
+}
+
+variable "home_region" {
+  description = "Tenancy home region — where tenancy-level IAM writes must go"
   type        = string
 }
 

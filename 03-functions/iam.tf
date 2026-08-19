@@ -44,6 +44,9 @@
 # Policy — faas service can pull images from OCIR and attach to the VCN
 # --------------------------------------------------------------------------------
 resource "oci_identity_policy" "faas_infra" {
+  # Tenancy-level IAM: writes are only accepted in the home region.
+  provider = oci.home
+
   compartment_id = var.tenancy_ocid
   name           = "resume-faas-infra"
   description    = "Allow OCI Functions runtime to pull OCIR images and use VCN"
@@ -58,6 +61,9 @@ resource "oci_identity_policy" "faas_infra" {
 # Dynamic Group — matches every Function in the compartment
 # --------------------------------------------------------------------------------
 resource "oci_identity_dynamic_group" "resume_functions" {
+  # Tenancy-level IAM: writes are only accepted in the home region.
+  provider = oci.home
+
   compartment_id = var.tenancy_ocid # Dynamic groups live at the tenancy root
   name           = "resume-functions-dg"
   description    = "OCI Functions in the resume compartment (Resource Principal auth)"
@@ -73,6 +79,9 @@ resource "oci_identity_dynamic_group" "resume_functions" {
 # rather than four independently-timed ones.
 # --------------------------------------------------------------------------------
 resource "oci_identity_policy" "functions_runtime" {
+  # Tenancy-level IAM: writes are only accepted in the home region.
+  provider = oci.home
+
   compartment_id = var.tenancy_ocid
   name           = "resume-functions-runtime"
   description    = "Allow resume functions to use NoSQL, Object Storage, Queue and Generative AI"
@@ -103,6 +112,9 @@ resource "oci_identity_policy" "functions_runtime" {
 # a user or instance) is the one allowed to call Functions.
 # --------------------------------------------------------------------------------
 resource "oci_identity_policy" "apigateway_functions" {
+  # Tenancy-level IAM: writes are only accepted in the home region.
+  provider = oci.home
+
   compartment_id = var.tenancy_ocid
   name           = "resume-apigateway-invoke"
   description    = "Allow API Gateway to invoke resume functions"
@@ -125,6 +137,9 @@ resource "oci_identity_policy" "apigateway_functions" {
 # and without the grant already present it fails its reads silently.
 # --------------------------------------------------------------------------------
 resource "oci_identity_policy" "connector_hub" {
+  # Tenancy-level IAM: writes are only accepted in the home region.
+  provider = oci.home
+
   compartment_id = var.tenancy_ocid
   name           = "resume-connector-hub"
   description    = "Allow Connector Hub to read the Queue and invoke the worker"

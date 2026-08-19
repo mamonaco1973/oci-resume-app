@@ -117,6 +117,30 @@ export TF_VAR_tenancy_ocid="$TENANCY_OCID"
 export TF_VAR_compartment_id="$OCI_COMPARTMENT_ID"
 export TF_VAR_region="$REGION"
 
+# ------------------------------------------------------------------------------
+# Home region — where tenancy-level IAM writes must go
+# ------------------------------------------------------------------------------
+# Policies and dynamic groups have one master copy, in the tenancy home region,
+# and OCI rejects writes to them from anywhere else with a 403 naming the home
+# region. Since this stack deploys to Chicago, 03-functions runs those five
+# resources through a provider alias pinned here.
+#
+# Queried rather than hardcoded: the home region is a property of the tenancy,
+# so a hardcoded IAD would silently be wrong for anyone else running this.
+# ------------------------------------------------------------------------------
+HOME_REGION=$(oci iam region-subscription list \
+  --tenancy-id "${TENANCY_OCID}" \
+  --query 'data[?"is-home-region"]."region-name" | [0]' \
+  --raw-output 2>/dev/null || echo "")
+
+if [ -z "${HOME_REGION}" ] || [ "${HOME_REGION}" = "null" ]; then
+  echo "ERROR: Could not determine the tenancy home region. Check with:"
+  echo "ERROR:   oci iam region-subscription list --tenancy-id ${TENANCY_OCID}"
+  exit 1
+fi
+
+export TF_VAR_home_region="${HOME_REGION}"
+
 # Identity domain that holds the SPA app + self-registration profile.  Create the
 # domain once in the console (Terraform can't cleanly create/destroy domains),
 # then point at it here.  REQUIRED — check_env.sh (run above) fails if unset.
