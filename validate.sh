@@ -18,6 +18,12 @@
 
 set -euo pipefail
 
+# Same override the rest of the scripts use. Without this every OCI CLI call
+# below silently queries whatever ~/.oci/config points at, finds none of the
+# resources, and reports a healthy deploy as broken -- "0 of 4 connectors" when
+# all four are ACTIVE in the deploy region.
+REGION="${OCI_REGION:-us-chicago-1}"
+
 # ------------------------------------------------------------------------------
 # Discover endpoints from Terraform output
 # ------------------------------------------------------------------------------
@@ -197,10 +203,12 @@ if [[ -n "${QUEUE_ID}" ]]; then
   # plane (lifecycle state) lives under queue-admin; `messages` is the data
   # plane and knows nothing about whether the queue is ACTIVE.
   QSTATE=$(oci_state oci queue queue-admin get --queue-id "${QUEUE_ID}" \
+    --region "${REGION}" \
     --query 'data."lifecycle-state"' --raw-output) || QSTATE="UNAVAILABLE"
 
   if [[ "${QSTATE}" == "UNAVAILABLE" ]]; then
-    echo "NOTE: Queue state not checked (CLI lacks the queue command) — skipping."
+    echo "WARN: Queue state could not be read in ${REGION} — check the CLI version"
+    echo "WARN: and that the queue exists there. Not treated as a failure."
   else
     echo "NOTE: Queue state - ${QSTATE}"
     if [[ "${QSTATE}" != "ACTIVE" ]]; then
@@ -222,10 +230,11 @@ COMPARTMENT_ID=$(cd 03-functions && terraform output -raw compartment_id 2>/dev/
 EXPECTED=$(cd 03-functions && terraform output -raw worker_concurrency 2>/dev/null || echo "")
 
 if [[ -n "${COMPARTMENT_ID}" ]]; then
-  SCACTIVE=$(oci_state oci sch service-connector list     --compartment-id "${COMPARTMENT_ID}"     --query 'length(data.items[?starts_with("display-name", `resume-queue-to-worker`) && "lifecycle-state" == `ACTIVE`])'     --raw-output) || SCACTIVE="UNAVAILABLE"
+  SCACTIVE=$(oci_state oci sch service-connector list --region "${REGION}" --compartment-id "${COMPARTMENT_ID}"     --query 'length(data.items[?starts_with("display-name", `resume-queue-to-worker`) && "lifecycle-state" == `ACTIVE`])'     --raw-output) || SCACTIVE="UNAVAILABLE"
 
   if [[ "${SCACTIVE}" == "UNAVAILABLE" ]]; then
-    echo "NOTE: Connector state not checked (CLI lacks the sch command) — skipping."
+    echo "WARN: Connector state could not be read in ${REGION} — check the CLI"
+    echo "WARN: version and the region. Not treated as a failure."
   else
     echo "NOTE: Active connectors - ${SCACTIVE}${EXPECTED:+ of ${EXPECTED}}"
 
