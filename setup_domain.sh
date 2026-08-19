@@ -42,7 +42,17 @@ EMAIL_TEMPLATE="${OCI_EMAIL_TEMPLATE:-MeRegisterVerifyEmail}"
 # Derive OCI identifiers from ~/.oci/config
 # ------------------------------------------------------------------------------
 TENANCY_OCID=$(awk -F'=' '/^tenancy[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
-REGION=$(awk -F'=' '/^region[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ~/.oci/config)
+# Home region for the identity domain. Must match the region the rest of the
+# stack deploys into (see OCI_REGION in apply.sh) -- otherwise the domain is
+# homed in one region while the API Gateway, Functions and Terraform identity
+# data sources live in another.
+#
+# The runtime path would survive the split: the domain URL is an absolute
+# idcs-*.identity.oraclecloud.com endpoint, so browser PKCE and the gateway's
+# JWKS fetch work from anywhere. It is the Terraform identity data sources and
+# tenancy-level IAM writes that make a cross-region domain a gamble, and there
+# is no reason to take it.
+REGION="${OCI_REGION:-us-chicago-1}"
 COMPARTMENT_ID="${OCI_COMPARTMENT_ID:-$TENANCY_OCID}"
 
 echo "NOTE: Domain      - ${DOMAIN_NAME} (${LICENSE_TYPE})"
@@ -78,6 +88,21 @@ DOMAIN_ID="$(find_domain_id)"
 
 if [ -n "${DOMAIN_ID}" ] && [ "${DOMAIN_ID}" != "null" ]; then
   echo "NOTE: Domain '${DOMAIN_NAME}' already exists — skipping create."
+
+  # The lookup above is tenancy-wide and does NOT filter by region, so a domain
+  # of the same name left behind in another region is found and reused. That
+  # produces a stack whose auth lives somewhere other than everything else,
+  # with no error to indicate it. Warn loudly rather than proceeding blind.
+  EXISTING_REGION=$(oci iam domain get --domain-id "${DOMAIN_ID}"     --query 'data."home-region"' --raw-output 2>/dev/null || echo "")
+  if [ -n "${EXISTING_REGION}" ] && [ "${EXISTING_REGION}" != "${REGION}" ]; then
+    echo "ERROR: Domain '${DOMAIN_NAME}' is homed in ${EXISTING_REGION}, but this"
+    echo "ERROR: deploy targets ${REGION}. Domain lookup is tenancy-wide, so the"
+    echo "ERROR: wrong-region domain would be reused silently."
+    echo "ERROR:"
+    echo "ERROR: Remove it first, then re-run:"
+    echo "ERROR:   OCI_REGION=${EXISTING_REGION} ./delete_domain.sh"
+    exit 1
+  fi
 else
   echo "NOTE: Creating domain '${DOMAIN_NAME}' (this takes a few minutes)..."
   # No admin_* args => no admin user is created (the creating principal manages

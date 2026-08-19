@@ -27,6 +27,13 @@ set -euo pipefail
 # Reuse the same names setup_domain.sh persisted (gitignored).
 if [ -f env.sh ]; then source env.sh; fi
 
+# Domain lookup and deletion are both tenancy-wide (by display name, then by
+# OCID), so no region is needed to FIND the domain -- this is only used to warn
+# when the domain about to be deleted is homed somewhere other than where the
+# stack deploys. Deletion still proceeds: removing a leftover domain in an old
+# region is exactly why you would run this.
+REGION="${OCI_REGION:-us-chicago-1}"
+
 DOMAIN_NAME="${OCI_DOMAIN_NAME:-resume-app}"
 
 # ------------------------------------------------------------------------------
@@ -67,6 +74,18 @@ if [ -z "${DOMAIN_ID}" ] || [ "${DOMAIN_ID}" = "null" ]; then
 fi
 
 echo "NOTE: Found domain - ${DOMAIN_ID}"
+
+# Report where it actually lives. A domain found by name may be a leftover in a
+# previous region, and deleting the wrong one costs a full re-bootstrap.
+DOMAIN_REGION=$(oci iam domain get --domain-id "${DOMAIN_ID}" \
+  --query 'data."home-region"' --raw-output 2>/dev/null || echo "")
+if [ -n "${DOMAIN_REGION}" ]; then
+  echo "NOTE: Home region - ${DOMAIN_REGION}"
+  if [ "${DOMAIN_REGION}" != "${REGION}" ]; then
+    echo "WARN: Domain is homed in ${DOMAIN_REGION}, not ${REGION}."
+    echo "WARN: Deleting it anyway -- confirm this is the one you meant."
+  fi
+fi
 
 # ------------------------------------------------------------------------------
 # 2. Deactivate (only if ACTIVE) — a deactivated domain can't be deleted while
