@@ -16,6 +16,7 @@ Usage
     python3 probe_genai.py                  # probe every CHAT model, timed
     python3 probe_genai.py google           # only names matching a filter
     python3 probe_genai.py --tokens 800     # longer generation, realistic timing
+    python3 probe_genai.py --region us-chicago-1   # probe another region
     python3 probe_genai.py --check <name>   # exact one; exit 0 works, 1 does not
 
     --check is what check_env.sh calls as a pre-flight, so a model that has been
@@ -111,10 +112,26 @@ from oci.generative_ai_inference.models import (
 )
 
 config = oci.config.from_file()
-region = config["region"]
 tenancy = config["tenancy"]
 
 args = sys.argv[1:]
+
+# --region NAME probes a region other than the one in ~/.oci/config, without
+# editing the config. Both the control-plane client and the inference endpoint
+# are built from config["region"], so overriding it here is sufficient.
+#
+# NOTE: this only works for a region the tenancy is SUBSCRIBED to. An
+# unsubscribed region rejects the call rather than silently returning nothing,
+# so a failure here is informative, not ambiguous.
+if "--region" in args:
+    i = args.index("--region")
+    try:
+        config["region"] = args[i + 1]
+    except IndexError:
+        sys.exit("ERROR: --region needs a region, e.g. --region us-chicago-1")
+    del args[i:i + 2]
+
+region = config["region"]
 
 # Kept tiny by default: --check runs on every apply.sh as a pre-flight, and a
 # liveness test has no reason to generate real output.
