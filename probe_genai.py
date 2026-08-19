@@ -33,6 +33,8 @@ import subprocess
 import sys
 import time
 
+_T0 = time.perf_counter()
+
 
 def _reexec_with_oci_python():
     """Re-run this script under an interpreter that has the oci SDK.
@@ -67,8 +69,15 @@ def _reexec_with_oci_python():
     for cand in candidates:
         if not cand or not os.path.isfile(cand) or not os.access(cand, os.X_OK):
             continue
+        # find_spec RESOLVES the module without executing it. The obvious
+        # test -- "-c import oci" -- would fully load the SDK just to decide
+        # whether it exists, and the SDK is slow to import, so the cost would
+        # be paid twice: once here and once after the exec.
         probe = subprocess.run(
-            [cand, "-c", "import oci"], capture_output=True
+            [cand, "-c",
+             "import importlib.util,sys;"
+             "sys.exit(0 if importlib.util.find_spec('oci') else 1)"],
+            capture_output=True,
         )
         if probe.returncode == 0:
             os.execv(cand, [cand, os.path.abspath(__file__)] + sys.argv[1:])
@@ -88,6 +97,8 @@ try:
     import oci
 except ModuleNotFoundError:
     _reexec_with_oci_python()
+
+_T_IMPORT = time.perf_counter() - _T0
 
 from oci.generative_ai import GenerativeAiClient
 from oci.generative_ai_inference import GenerativeAiInferenceClient
@@ -144,7 +155,10 @@ if not check_mode:
 # ------------------------------------------------------------------------------
 
 ctl = GenerativeAiClient(config)
+
+_t = time.perf_counter()
 models = ctl.list_models(compartment_id=tenancy).data.items
+_T_LIST = time.perf_counter() - _t
 
 candidates = []
 for m in models:
@@ -212,12 +226,17 @@ def build_details(model, tokens):
     )
 
 
-# Absorb TLS/client setup so it is not billed to the first model probed.
-if unique and not check_mode:
+# Absorb TLS/client setup so it is not billed to the first model probed. Only
+# worth an extra round trip when models are being RANKED against each other --
+# for a single model there is nothing to be unfair to, and the warm-up would
+# just be latency the user waits through.
+if len(unique) > 1 and not check_mode:
+    _t = time.perf_counter()
     try:
         inf.chat(build_details(unique[0], 1))
     except Exception:
         pass
+    print(f"  warm-up  {time.perf_counter() - _t:7.2f}s  (discarded)\n")
 
 working = []
 
