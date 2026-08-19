@@ -101,8 +101,28 @@ echo "NOTE: [Phase 4/4] Destroying web application..."
 
 # The bucket lives in the 03-functions state; Phase 4 only manages the uploaded
 # objects but its config still requires the bucket-name var to be set.  Read it
-# from the backend output (still present since Phase 3 is torn down after this).
-WEB_BUCKET=$(cd 03-functions && terraform output -raw web_bucket_name 2>/dev/null || echo "unknown")
+# from the Phase 3 output, with the same API fallback the backend bucket uses
+# below: a previously failed destroy strips the outputs while leaving the
+# buckets, so the output alone is not dependable on a re-run.
+WEB_BUCKET=$(cd 03-functions && terraform output -raw web_bucket_name 2>/dev/null || echo "")
+
+if [ -z "${WEB_BUCKET}" ]; then
+  WEB_NS=$(oci os ns get --region "${REGION}" --query 'data' --raw-output 2>/dev/null || echo "")
+  if [ -n "${WEB_NS}" ]; then
+    WEB_BUCKET=$(oci os bucket list \
+      --region "${REGION}" \
+      --namespace "${WEB_NS}" \
+      --compartment-id "${OCI_COMPARTMENT_ID}" \
+      --query "data[?starts_with(name, 'resume-web-')].name | [0]" \
+      --raw-output 2>/dev/null || echo "")
+  fi
+fi
+
+# Destroy only needs the variable SET -- the objects are removed by state
+# address, not by name -- so a placeholder is safe when discovery finds nothing.
+if [ -z "${WEB_BUCKET}" ] || [ "${WEB_BUCKET}" = "null" ]; then
+  WEB_BUCKET="unknown"
+fi
 
 cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
 terraform init
@@ -131,6 +151,40 @@ echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, Queue, and API Gateway..."
 BACKEND_BUCKET=$(cd 03-functions && terraform output -raw backend_bucket_name 2>/dev/null || echo "")
 OS_NAMESPACE=$(cd 03-functions && terraform output -raw os_namespace 2>/dev/null || echo "")
 
+# ------------------------------------------------------------------------------
+# Fall back to discovery when the outputs are gone
+# ------------------------------------------------------------------------------
+# Terraform destroys OUTPUTS BEFORE the resources they reference, so a destroy
+# that fails on the bucket leaves the bucket alive but its outputs already
+# stripped from state. Every later run then reads empty strings, skips the
+# purge, and fails on the same 409 -- the first failure destroys the
+# information the recovery path needs, and re-running can never work.
+#
+# So do not trust the outputs as the only source. The namespace is a tenancy
+# constant and the bucket carries a known name prefix, so both are recoverable
+# from the API alone.
+# ------------------------------------------------------------------------------
+if [ -z "${OS_NAMESPACE}" ]; then
+  OS_NAMESPACE=$(oci os ns get --region "${REGION}" --query 'data' --raw-output 2>/dev/null || echo "")
+  if [ -n "${OS_NAMESPACE}" ]; then
+    echo "NOTE: Namespace recovered from API - ${OS_NAMESPACE}"
+  fi
+fi
+
+if [ -z "${BACKEND_BUCKET}" ] && [ -n "${OS_NAMESPACE}" ]; then
+  BACKEND_BUCKET=$(oci os bucket list \
+    --region "${REGION}" \
+    --namespace "${OS_NAMESPACE}" \
+    --compartment-id "${OCI_COMPARTMENT_ID}" \
+    --query "data[?starts_with(name, 'resume-backend-')].name | [0]" \
+    --raw-output 2>/dev/null || echo "")
+  if [ -n "${BACKEND_BUCKET}" ] && [ "${BACKEND_BUCKET}" != "null" ]; then
+    echo "NOTE: Backend bucket recovered from API - ${BACKEND_BUCKET}"
+  else
+    BACKEND_BUCKET=""
+  fi
+fi
+
 if [[ -n "${BACKEND_BUCKET}" && -n "${OS_NAMESPACE}" ]]; then
   echo "NOTE: Emptying backend bucket ${BACKEND_BUCKET}..."
   # Failure here is NOT survivable: Terraform's bucket delete fails with
@@ -148,7 +202,16 @@ if [[ -n "${BACKEND_BUCKET}" && -n "${OS_NAMESPACE}" ]]; then
     exit 1
   fi
 else
-  echo "NOTE: Backend bucket name unavailable — skipping purge."
+  # Not survivable either. If the outputs cannot be read, the bucket is not
+  # emptied and Terraform fails on 409-BucketNotEmpty regardless -- so the old
+  # "skipping purge" NOTE only bought a confusing error thirty seconds later.
+  echo "ERROR: Could not read backend_bucket_name / os_namespace from the"
+  echo "ERROR: 03-functions state, so the bucket cannot be emptied and"
+  echo "ERROR: terraform destroy would fail on 409-BucketNotEmpty."
+  echo "ERROR:   bucket    = '${BACKEND_BUCKET}'"
+  echo "ERROR:   namespace = '${OS_NAMESPACE}'"
+  echo "ERROR: Check:  cd 03-functions && terraform output"
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
