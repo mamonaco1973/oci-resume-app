@@ -199,10 +199,14 @@ oci_state() {
 
 if [[ -n "${QUEUE_ID}" ]]; then
   echo "NOTE: Verifying the scoring queue is ACTIVE..."
-  # `oci queue` splits into channels / messages / queue-admin. The control
-  # plane (lifecycle state) lives under queue-admin; `messages` is the data
+  # Command shape is four levels deep and not guessable: `oci queue` splits
+  # into channels / messages / queue-admin, and queue-admin is itself a group
+  # -- the resource verbs sit under `queue-admin queue`. `queue-admin get`
+  # looks right and fails with "No such command 'get'".
+  #
+  # queue-admin is the control plane (lifecycle state); `messages` is the data
   # plane and knows nothing about whether the queue is ACTIVE.
-  QSTATE=$(oci_state oci queue queue-admin get --queue-id "${QUEUE_ID}" \
+  QSTATE=$(oci_state oci queue queue-admin queue get --queue-id "${QUEUE_ID}" \
     --region "${REGION}" \
     --query 'data."lifecycle-state"' --raw-output) || QSTATE="UNAVAILABLE"
 
