@@ -133,11 +133,20 @@ OS_NAMESPACE=$(cd 03-functions && terraform output -raw os_namespace 2>/dev/null
 
 if [[ -n "${BACKEND_BUCKET}" && -n "${OS_NAMESPACE}" ]]; then
   echo "NOTE: Emptying backend bucket ${BACKEND_BUCKET}..."
-  oci os object bulk-delete \
-    --namespace "${OS_NAMESPACE}" \
-    --bucket-name "${BACKEND_BUCKET}" \
-    --force 2>/dev/null \
-    || echo "NOTE: Bucket already empty or unreachable — continuing."
+  # Failure here is NOT survivable: Terraform's bucket delete fails with
+  # 409-BucketNotEmpty a few lines later, and the original code hid the cause
+  # behind "already empty or unreachable — continuing". Stderr is kept and the
+  # script stops, so the real error is what you see.
+  if ! oci os object bulk-delete \
+      --region "${REGION}" \
+      --namespace "${OS_NAMESPACE}" \
+      --bucket-name "${BACKEND_BUCKET}" \
+      --force; then
+    echo "ERROR: Could not empty ${BACKEND_BUCKET} in ${REGION}."
+    echo "ERROR: terraform destroy would fail on 409-BucketNotEmpty, so"
+    echo "ERROR: stopping here instead. Empty it and re-run ./destroy.sh."
+    exit 1
+  fi
 else
   echo "NOTE: Backend bucket name unavailable — skipping purge."
 fi
@@ -182,6 +191,7 @@ cd ..
 echo "NOTE: Purging OCIR images from resume-functions repository..."
 
 IMAGE_IDS=$(oci artifacts container image list \
+  --region "${REGION}" \
   --compartment-id "${OCI_COMPARTMENT_ID}" \
   --all \
   --query 'data.items[].id' \
@@ -192,6 +202,7 @@ if [[ -n "${IMAGE_IDS}" ]]; then
   echo "${IMAGE_IDS}" | while read -r IMG_ID; do
     echo "NOTE: Deleting image ${IMG_ID}..."
     oci artifacts container image delete \
+      --region "${REGION}" \
       --image-id "${IMG_ID}" \
       --force 2>/dev/null || true
   done
@@ -225,12 +236,14 @@ echo "NOTE: Deleting OCIR auth token..."
 TOKEN_FILE="${HOME}/.oci/ocir_token"
 
 TOKEN_ID=$(oci iam auth-token list \
+  --region "${HOME_REGION}" \
   --user-id "${USER_OCID}" \
   --query "data[?description=='resume-app-ocir'].id | [0]" \
   --raw-output 2>/dev/null || echo "")
 
 if [[ -n "${TOKEN_ID}" && "${TOKEN_ID}" != "null" ]]; then
   oci iam auth-token delete \
+    --region "${HOME_REGION}" \
     --user-id "${USER_OCID}" \
     --auth-token-id "${TOKEN_ID}" \
     --force
