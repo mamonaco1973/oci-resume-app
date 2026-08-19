@@ -17,7 +17,7 @@
 import nosql_util
 from common import ok, error, utc_now
 
-TOKEN_LIMIT_DEFAULT = 100_000
+TOKEN_LIMIT_DEFAULT = 500_000
 
 # Hard cap — registration is rejected once this many user records exist.
 USER_CAP = 100

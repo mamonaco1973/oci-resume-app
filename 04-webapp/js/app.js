@@ -930,7 +930,9 @@ async function updateTokenUsage() {
   try {
     const data      = await getUsage();
     const used      = data?.tokens_used ?? 0;
-    const limit     = data?.token_limit ?? 100000;
+    // Fallback only — the API is the source of truth. Must track
+    // TOKEN_LIMIT_DEFAULT in users.py or the ring misreads before first load.
+    const limit     = data?.token_limit ?? 500000;
     const remaining = Math.max(0, limit - used);
     const usedPct   = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
     const leftPct   = 100 - usedPct;

@@ -54,7 +54,7 @@ logger.setLevel(logging.INFO)
 GENAI_MODEL_ID = os.environ.get("GENAI_MODEL_ID", "").strip()
 GENAI_ENDPOINT = os.environ.get("GENAI_ENDPOINT", "").strip()
 
-TOKEN_LIMIT_DEFAULT = 100_000
+TOKEN_LIMIT_DEFAULT = 500_000
 
 # =================================================================================
 # Generative AI client
@@ -139,11 +139,16 @@ def strip_code_fences(text):
 def parse_json_object(text):
     """Parse the first complete JSON object out of a model response.
 
-    Claude reliably returns bare JSON when told to. Llama is looser: it will
-    sometimes prepend "Here is the JSON:" or append a closing remark despite
-    instructions, and json.loads on the whole string then fails on output that
-    is otherwise perfectly good. Slicing from the first brace to the last is
-    enough to recover those cases without masking genuinely malformed output.
+    Claude reliably returns bare JSON when told to. Open-weight models are
+    looser: they will sometimes prepend "Here is the JSON:" or append a closing
+    remark despite instructions, and json.loads on the whole string then fails
+    on output that is otherwise perfectly good. Slicing from the first brace to
+    the last is enough to recover those cases without masking genuinely
+    malformed output.
+
+    This matters more under gpt-oss-120b than it did under Llama, not less: it
+    is a reasoning model and emits chain-of-thought before its answer, so there
+    is more opportunity for text to arrive around the object.
 
     Args:
         text: Raw model response text.
@@ -533,9 +538,10 @@ def extract_job_fields(visible_text, user_id=None):
     - company_name
     - job_text
     """
-    # Reworked from the Claude prompt: Llama needs the output contract stated
-    # first and last, and needs to be told explicitly that the response starts
-    # with "{" — without that it tends to open with a sentence of preamble.
+    # Reworked from the Claude prompt: open-weight models need the output
+    # contract stated first and last, and need to be told explicitly that the
+    # response starts with "{" — without that it tends to open with a sentence
+    # of preamble.
     prompt = f"""
 You extract structured data from job postings.
 
@@ -643,8 +649,8 @@ def score_job_against_resume(user_id, job_id, track_user_id=None):
     if isinstance(score, str) and score.strip().isdigit():
         score = int(score.strip())
 
-    # Llama returns a float more readily than Claude did; 82.0 is a valid score
-    # and rejecting it would fail an otherwise good run.
+    # Open-weight models return a float more readily than Claude did; 82.0 is
+    # a valid score and rejecting it would fail an otherwise good run.
     if isinstance(score, float) and score.is_integer():
         score = int(score)
 

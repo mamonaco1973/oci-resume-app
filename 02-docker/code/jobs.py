@@ -38,9 +38,12 @@ from oci.queue.models import PutMessagesDetails, PutMessagesDetailsEntry
 
 log = logging.getLogger(__name__)
 
-# Lifetime caps, matching the AWS build.
+# Lifetime caps. The token cap is 500k here rather than the AWS build's 100k:
+# gpt-oss-120b is a reasoning model, so chain-of-thought it never shows the
+# user still bills as output tokens and burns the allowance several times
+# faster for the same visible analysis.
 MAX_JOBS_PER_USER   = 1000
-TOKEN_LIMIT_DEFAULT = 100_000
+TOKEN_LIMIT_DEFAULT = 500_000
 
 # --------------------------------------------------------------------------------
 # Queue client

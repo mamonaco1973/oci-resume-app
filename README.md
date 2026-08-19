@@ -71,7 +71,7 @@ worker implements.
 How tight that ceiling is depends heavily on the model. Four connectors running
 a slow model produced constant 429s — and because the retry turns throttling
 into waiting, the jobs *looked* serialized. The same four connectors on
-`gemini-2.5-flash-lite` run cleanly: a faster model holds its throttle slot for
+`openai.gpt-oss-120b` run cleanly: a faster model holds its throttle slot for
 much less time, so contention drops. If `GenAI ... throttled (429)` starts
 appearing in the worker log, lower `worker_concurrency`; workers sitting in
 backoff are worse than fewer workers that actually run.
@@ -80,8 +80,9 @@ backoff are worse than fewer workers that actually run.
 
 1. **Asynchronous AI pipeline** – Queue plus Connector Hub decouples a slow
    inference workload from a request/response API that could never contain it.
-2. **OCI Generative AI** – On-demand inference against xAI Grok, with per-user
-   token accounting and a lifetime cap enforced before work is accepted.
+2. **OCI Generative AI** – On-demand inference against OpenAI's open-weight
+   `gpt-oss-120b`, with per-user token accounting and a lifetime cap enforced
+   before work is accepted.
 3. **Serverless compute** – Two OCI Functions from one container image, selected
    by an environment variable: a short-timeout API function and a long-timeout
    worker.
@@ -169,6 +170,20 @@ Chicago while the other OCI builds in this set use Ashburn.
 unlike Gemini 2.5 (retiring on GCP) or the Grok line (ten variants retired on a
 single day) it has no upstream vendor schedule hanging over it.
 
+**It is a reasoning model, and that changes two things.** `gpt-oss-120b` is a
+mixture-of-experts model — roughly 117B parameters total but only ~5B active per
+token, which is why a model this size answers in a tenth of a second — and it
+generates chain-of-thought before its answer. Consequences worth knowing:
+
+- **Token counts run higher.** Reasoning tokens are generated tokens, so the
+  per-user usage ring and the lifetime cap climb faster per job than they did on
+  Llama for the same visible output. The numbers are not comparable to the AWS,
+  GCP and Azure builds in this set.
+- **Responses are more likely to carry preamble**, which is why
+  `parse_json_object()` slices from the first `{` to the last `}` instead of
+  trusting the whole string. That was written for Llama's occasional
+  "Here is the JSON:" and matters more now, not less.
+
 Note that `google.gemini-2.5-flash-lite` does **not** exist in Chicago — it
 carries `flash` and `pro` only. Models do not necessarily move with you across
 regions.
@@ -180,10 +195,12 @@ carry no retirement date, resolve to a valid OCID — and still fail every call
 with `404 Entity with key <ocid> not found`. Nothing in the listing
 distinguishes the two groups.
 
-Measured in `us-ashburn-1` by calling `chat()` against every listed CHAT model,
-on-demand works with **xAI Grok and Google Gemini only**. All Meta Llama 4, both
-OpenAI gpt-oss sizes and every Cohere model are listed but not callable, and
-there is no Anthropic model at all.
+`us-ashburn-1` is the clearest demonstration: every Meta Llama 4 entry, both
+OpenAI gpt-oss sizes and every Cohere model are listed there and none of them
+answer a call. Only xAI Grok and Google Gemini do, and there is no Anthropic
+model at all. The identical catalog entries in `us-chicago-1` — same names,
+different OCIDs — answer in about a tenth of a second. The listing is a
+statement about what the region knows, not about what it will serve you.
 
 `check_env.sh` therefore makes a real chat call rather than inspecting metadata,
 and refuses to deploy if the configured model does not answer.
@@ -193,7 +210,8 @@ not read the catalog:
 
 ```bash
 python3 probe_genai.py                        # probe every CHAT model
-python3 probe_genai.py --check google.gemini-2.5-flash-lite  # exit 0 / 1
+python3 probe_genai.py --check openai.gpt-oss-120b   # exit 0 / 1
+python3 probe_genai.py --region us-ashburn-1         # compare another region
 ```
 
 `apply.sh` reads the Phase 3 outputs, renders `04-webapp/js/config.js` from its

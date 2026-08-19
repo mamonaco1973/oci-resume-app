@@ -49,7 +49,7 @@ OCI Queue: resume-job-requests
 Connector Hub: resume-queue-to-worker-1..4  (batch_size_in_num = 1)
    │  4 connectors: ONE connector invokes its Function SERIALLY.
    │  Ceiling is the GenAI on-demand throttle, not compute — a slow
-   │  model 429s at 4; gemini-2.5-flash-lite runs 4 cleanly.
+   │  model 429s at 4; openai.gpt-oss-120b runs 4 cleanly.
    ▼
 Function: resume-worker (FUNCTION_TYPE=worker, 300s, 2GB)
    │  scrape → GenAI extract → GenAI score → write analysis + score
@@ -175,8 +175,8 @@ requests, no multipart.
    is what makes delivery prompt. Leaving it at the default is the most common
    way to conclude the pipeline is broken when it is only batching.
 3. **Generative AI, not Bedrock.** `GenericChatRequest` + `OnDemandServingMode`
-   against a per-region inference endpoint. Prompts were reworked for Llama (see
-   below) and the JSON parse is more defensive.
+   against a per-region inference endpoint. Prompts were reworked for an
+   open-weight model and the JSON parse is more defensive (see below).
 4. **`doc JSON` single table** rather than native schemaless items.
 5. **Two buckets, no CloudFront.** The SPA is served straight from Object
    Storage under `/n/<ns>/b/<bucket>/o/`, which is *not* a domain root — see the
@@ -190,19 +190,38 @@ requests, no multipart.
 ## Generative AI
 
 Model selection lives in **`genai-config.sh`** and flows to Terraform as
-`TF_VAR_genai_model_id`. Default: **`meta.llama-4-scout-17b-16e-instruct`**.
+`TF_VAR_genai_model_id`. Default: **`openai.gpt-oss-120b`**, in
+**`us-chicago-1`**.
 
-**Why not Gemini or Cohere.** As of 2026-08-16 in `us-ashburn-1`: every Cohere
-chat model is on-demand retired, the entire Grok 3/4/4-fast line retired
-2026-08-15, there is no Anthropic model at all, and Gemini 2.5 is retiring
-upstream. Meta's Llama 4 entries carry no retirement date and have open weights.
-`check_env.sh` fails the deploy if the configured model is not live.
+**Region is part of the model choice.** What is *callable* differs sharply from
+what is *listed*, and it differs by region. In `us-ashburn-1` every Meta Llama 4
+entry, both OpenAI gpt-oss sizes and all Cohere models are listed and none
+answer; only Grok and Gemini do, and Grok ranged from 0.4s to 68s on an
+identical 5-token call. In `us-chicago-1` ten models answer, the slowest in
+2.6s. That is why this project deploys to Chicago while the other OCI builds in
+this set use Ashburn. `probe_genai.py` makes real `chat()` calls to establish
+this; the catalog cannot tell you.
 
-**Prompt differences from Claude.** Llama needs the output contract stated first
-and last, and needs to be told explicitly that the response begins with `{` —
-otherwise it opens with a sentence of preamble. `parse_json_object()` therefore
-slices from the first `{` to the last `}` rather than trusting the whole string,
-and the score check accepts a float (`82.0`) as well as an int.
+**Why gpt-oss.** Open weights, so no upstream retirement schedule — the
+consideration that ruled out Gemini 2.5 (retiring on GCP) and the Grok line (ten
+variants retired on a single day). `check_env.sh` still fails the deploy if the
+configured model does not answer.
+
+**It is a reasoning model.** A mixture-of-experts design, ~117B parameters total
+but only ~5B active per token, which is how it answers in ~0.1s. It emits
+chain-of-thought before its answer, which has two consequences here:
+
+- **Token accounting runs high.** Reasoning tokens are generated tokens, so the
+  usage ring and lifetime cap climb faster per job than on Llama for the same
+  visible output. Not comparable to the AWS, GCP and Azure builds.
+- **Preamble is more likely, not less.** `parse_json_object()` slices from the
+  first `{` to the last `}` rather than trusting the whole string. That was
+  written for Llama and matters more now.
+
+**Prompts state the output contract first and last** and say explicitly that the
+response begins with `{`. This was tuned for Llama and kept for gpt-oss because
+it is the reason parsing is reliable — a reasoning model has more opportunity to
+narrate, not less. The score check accepts a float (`82.0`) as well as an int.
 
 **Token usage** is not reported consistently across model families, so
 `_extract_usage()` falls back to a chars/4 estimate rather than letting the
