@@ -26,9 +26,67 @@ Usage
         PY=$(head -1 ~/bin/oci | sed 's/^#!//; s/ .*//'); "$PY" probe_genai.py
 """
 
+import os
+import shutil
+import subprocess
 import sys
 
-import oci
+
+def _reexec_with_oci_python():
+    """Re-run this script under an interpreter that has the oci SDK.
+
+    The SDK is not usually on the system python — the OCI CLI installs it into
+    its own bundled interpreter. Running this file via its shebang therefore
+    dies with ModuleNotFoundError even on a machine where the CLI works fine.
+
+    Rather than make the caller remember the interpreter path, locate it: read
+    the shebang of whatever `oci` resolves to, then fall back to the standard
+    install location. Each candidate is import-tested before exec, so a shell
+    wrapper (shebang /bin/bash) is skipped rather than exec'd, and the re-exec
+    cannot loop.
+    """
+    candidates = []
+
+    oci_cli = shutil.which("oci")
+    if oci_cli:
+        try:
+            with open(oci_cli, "r", encoding="utf-8", errors="replace") as fh:
+                first = fh.readline()
+            if first.startswith("#!"):
+                candidates.append(first[2:].strip().split()[0])
+        except OSError:
+            pass
+
+    candidates += [
+        os.path.expanduser("~/lib/oracle-cli/bin/python"),
+        os.path.expanduser("~/lib/oracle-cli/bin/python3"),
+    ]
+
+    for cand in candidates:
+        if not cand or not os.path.isfile(cand) or not os.access(cand, os.X_OK):
+            continue
+        probe = subprocess.run(
+            [cand, "-c", "import oci"], capture_output=True
+        )
+        if probe.returncode == 0:
+            os.execv(cand, [cand, os.path.abspath(__file__)] + sys.argv[1:])
+
+    sys.exit(
+        "ERROR: the oci Python SDK is not available.\n"
+        "  Tried: system python, the shebang of `oci`, "
+        "~/lib/oracle-cli/bin/python\n"
+        "  Fix with a throwaway venv:\n"
+        "    python3 -m venv /tmp/genai "
+        "&& /tmp/genai/bin/pip install -q oci "
+        "&& /tmp/genai/bin/python probe_genai.py"
+    )
+
+
+try:
+    import oci
+except ModuleNotFoundError:
+    _reexec_with_oci_python()
+
 from oci.generative_ai import GenerativeAiClient
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import (
