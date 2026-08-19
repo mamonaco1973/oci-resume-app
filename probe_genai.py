@@ -13,8 +13,9 @@ Why this exists
     answer.
 
 Usage
-    python3 probe_genai.py                  # probe every CHAT model
-    python3 probe_genai.py meta google      # only names matching a filter
+    python3 probe_genai.py                  # probe every CHAT model, timed
+    python3 probe_genai.py google           # only names matching a filter
+    python3 probe_genai.py --tokens 800     # longer generation, realistic timing
     python3 probe_genai.py --check <name>   # exact one; exit 0 works, 1 does not
 
     --check is what check_env.sh calls as a pre-flight, so a model that has been
@@ -30,6 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 
 def _reexec_with_oci_python():
@@ -103,6 +105,28 @@ tenancy = config["tenancy"]
 
 args = sys.argv[1:]
 
+# Kept tiny by default: --check runs on every apply.sh as a pre-flight, and a
+# liveness test has no reason to generate real output.
+PROMPT = "Reply with OK."
+MAX_TOKENS = 5
+
+# --tokens N asks for a longer generation, which makes the timings closer to
+# what the worker actually experiences (it requests 1500-4000).
+if "--tokens" in args:
+    i = args.index("--tokens")
+    try:
+        MAX_TOKENS = int(args[i + 1])
+    except (IndexError, ValueError):
+        sys.exit("ERROR: --tokens needs a number, e.g. --tokens 800")
+    if MAX_TOKENS > 50:
+        # A one-word prompt with a big cap just makes the model stop early.
+        # Give it something it will actually keep writing about.
+        PROMPT = (
+            "Write a short paragraph explaining what a resume is, "
+            "in plain language."
+        )
+    del args[i:i + 2]
+
 # --check <name>: verify one exact model and communicate through the exit code
 # so a shell pre-flight can gate on it.
 check_mode = len(args) >= 2 and args[0] == "--check"
@@ -110,9 +134,10 @@ check_name = args[1] if check_mode else None
 filters = [] if check_mode else [a.lower() for a in args]
 
 if not check_mode:
-    print(f"region   : {region}")
-    print(f"tenancy  : {tenancy}")
-    print(f"filters  : {filters or '(none — probing all CHAT models)'}\n")
+    print(f"region     : {region}")
+    print(f"tenancy    : {tenancy}")
+    print(f"max_tokens : {MAX_TOKENS}")
+    print(f"filters    : {filters or '(none — probing all CHAT models)'}\n")
 
 # ------------------------------------------------------------------------------
 # List candidates from the control plane
@@ -151,62 +176,92 @@ if not check_mode:
     print(f"{len(unique)} CHAT model(s) to probe\n")
 
 # ------------------------------------------------------------------------------
-# Probe each with a real, tiny chat call
+# Probe each with a real chat call, timed
+# ------------------------------------------------------------------------------
+# The timing is comparative, not representative. A few-token generation mostly
+# measures connection setup plus time-to-first-token; it does NOT reflect the
+# 1500-4000 token generations the worker actually asks for. Use it to rank
+# models against each other and to spot ones that are egregiously slow, then
+# re-run with --tokens for something closer to real output length.
+#
+# The first call also carries client and TLS setup, so it reads high. A warm-up
+# call against the first model absorbs that rather than unfairly penalising
+# whichever model happens to sort first.
 # ------------------------------------------------------------------------------
 
 inf = GenerativeAiInferenceClient(
     config,
     service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-    timeout=(10, 60),
+    timeout=(10, 120),
 )
+
+
+def build_details(model, tokens):
+    """Build a minimal ChatDetails for one model."""
+    return ChatDetails(
+        compartment_id=tenancy,
+        serving_mode=OnDemandServingMode(model_id=model.id),
+        chat_request=GenericChatRequest(
+            api_format=GenericChatRequest.API_FORMAT_GENERIC,
+            messages=[
+                Message(role="USER", content=[TextContent(text=PROMPT)])
+            ],
+            max_tokens=tokens,
+            temperature=0,
+        ),
+    )
+
+
+# Absorb TLS/client setup so it is not billed to the first model probed.
+if unique and not check_mode:
+    try:
+        inf.chat(build_details(unique[0], 1))
+    except Exception:
+        pass
 
 working = []
 
 for m in unique:
-    label = f"{m.display_name:<48}"
+    label = f"{m.display_name:<44}"
 
-    chat_request = GenericChatRequest(
-        api_format=GenericChatRequest.API_FORMAT_GENERIC,
-        messages=[Message(role="USER", content=[TextContent(text="Reply with OK.")])],
-        max_tokens=5,
-        temperature=0,
-    )
-
-    details = ChatDetails(
-        compartment_id=tenancy,
-        serving_mode=OnDemandServingMode(model_id=m.id),
-        chat_request=chat_request,
-    )
-
+    t0 = time.perf_counter()
     try:
-        inf.chat(details)
+        inf.chat(build_details(m, MAX_TOKENS))
+        elapsed = time.perf_counter() - t0
+
         if check_mode:
-            print(f"OK: {m.display_name} answers on-demand chat")
+            print(f"OK: {m.display_name} answers on-demand chat ({elapsed:.2f}s)")
             sys.exit(0)
-        print(f"  OK    {label}")
-        working.append(m.display_name)
+        print(f"  OK    {label} {elapsed:7.2f}s")
+        working.append((m.display_name, elapsed))
     except oci.exceptions.ServiceError as exc:
+        elapsed = time.perf_counter() - t0
         # 404 here is the interesting one: listed, but not served on demand.
         if check_mode:
             print(f"NOT ON DEMAND: {m.display_name} -> {exc.status} {exc.message}")
             sys.exit(1)
-        print(f"  {exc.status:<5} {label} {exc.message[:60]}")
+        print(f"  {exc.status:<5} {label} {elapsed:7.2f}s  {exc.message[:44]}")
     except Exception as exc:
+        elapsed = time.perf_counter() - t0
         if check_mode:
             print(f"ERROR probing {m.display_name}: {type(exc).__name__}: {exc}")
             sys.exit(1)
-        print(f"  ERR   {label} {type(exc).__name__}: {str(exc)[:50]}")
+        print(f"  ERR   {label} {elapsed:7.2f}s  {type(exc).__name__}")
 
 # ------------------------------------------------------------------------------
-# Result
+# Result — fastest first
 # ------------------------------------------------------------------------------
 
 print()
 if working:
-    print("On-demand chat works with:")
-    for name in working:
-        print(f"  {name}")
-    print(f"\nSet one of these as GENAI_MODEL_ID in genai-config.sh.")
+    working.sort(key=lambda pair: pair[1])
+    print(f"On-demand chat works with ({MAX_TOKENS} max_tokens, fastest first):")
+    for name, elapsed in working:
+        print(f"  {elapsed:7.2f}s  {name}")
+    print()
+    print("Set one of these as GENAI_MODEL_ID in genai-config.sh.")
+    print("Timings rank models; they are not a throughput measure — re-run with")
+    print("  --tokens 800   for something closer to real generation length.")
 else:
     print("No model answered an on-demand chat call in this region.")
     print("On-demand Generative AI may not be enabled for this tenancy.")
